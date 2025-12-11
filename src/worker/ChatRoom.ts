@@ -42,6 +42,20 @@ export class ChatRoom implements DurableObject {
 
         switch (data.type) {
           case 'auth':
+            // Clean up any existing session for this user (e.g., after re-login)
+            if (this.sessions.has(data.payload.userId)) {
+              console.log(`[Auth] Cleaning up existing session for user ${data.payload.userId}`);
+              const oldSession = this.sessions.get(data.payload.userId);
+              if (oldSession) {
+                try {
+                  oldSession.ws.close();
+                } catch (error) {
+                  console.error('[Auth] Error closing old session:', error);
+                }
+              }
+            }
+
+            // Create new session
             session = {
               userId: data.payload.userId,
               username: data.payload.username,

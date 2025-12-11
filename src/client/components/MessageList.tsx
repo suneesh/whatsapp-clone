@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useReadReceipt } from '../hooks/useReadReceipt';
 
 interface Message {
   id: string;
@@ -27,12 +28,20 @@ function MessageList({
   onMarkAsRead,
 }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageRefsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const { observeMessage, unobserveMessage } = useReadReceipt({
+    messages,
+    currentUserId,
+    selectedUserId,
+    onMarkAsRead,
+  });
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Detect unread messages and mark as read after 500ms
+  // Legacy fallback: Mark unread messages as read after 500ms if they're in view
   useEffect(() => {
     const unreadMessages = messages.filter(
       (m) =>
@@ -74,12 +83,30 @@ function MessageList({
     }
   };
 
+  const setMessageRef = (id: string, element: HTMLDivElement | null) => {
+    if (element) {
+      messageRefsRef.current.set(id, element);
+      observeMessage(element);
+    } else {
+      const el = messageRefsRef.current.get(id);
+      if (el) {
+        unobserveMessage(el);
+        messageRefsRef.current.delete(id);
+      }
+    }
+  };
+
   return (
     <div className="messages-container">
       {messages.map((message) => {
         const isSent = message.from === currentUserId;
         return (
-          <div key={message.id} className={`message ${isSent ? 'sent' : 'received'}`}>
+          <div
+            key={message.id}
+            ref={(el) => setMessageRef(message.id, el)}
+            data-message-id={message.id}
+            className={`message ${isSent ? 'sent' : 'received'}`}
+          >
             <div className="message-content">{message.content}</div>
             <div className="message-meta">
               <span>{formatTime(message.timestamp)}</span>

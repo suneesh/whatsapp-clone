@@ -90,6 +90,10 @@ export const useWebSocket = ({
       console.log('WebSocket disconnected');
       setConnected(false);
 
+      // Clear online users when connection closes (e.g., on logout)
+      // This prevents showing stale online status
+      onOnlineStatus([]);
+
       reconnectTimeout.current = window.setTimeout(() => {
         console.log('Attempting to reconnect...');
         connect();

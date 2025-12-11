@@ -46,9 +46,26 @@ body {
 }
 
 .login-box h1 {
-  margin-bottom: 30px;
+  margin-bottom: 10px;
   color: #333;
   font-size: 32px;
+}
+
+.login-box h2 {
+  margin-bottom: 20px;
+  color: #666;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.error-message {
+  background: #fee;
+  color: #c33;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  border: 1px solid #fcc;
 }
 
 .login-box input {
@@ -86,6 +103,25 @@ body {
 .login-box button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
+}
+
+.toggle-mode {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.toggle-mode button {
+  background: transparent;
+  color: #667eea;
+  text-decoration: none;
+  padding: 8px;
+  font-size: 14px;
+}
+
+.toggle-mode button:hover {
+  text-decoration: underline;
   transform: none;
 }
 
