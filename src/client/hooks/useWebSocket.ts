@@ -7,10 +7,12 @@ interface Message {
   content: string;
   timestamp: number;
   status: 'sent' | 'delivered' | 'read';
+  type?: 'text' | 'image';
+  imageData?: string;
 }
 
 interface WSMessage {
-  type: 'auth' | 'message' | 'typing' | 'status' | 'online' | 'read' | 'error';
+  type: 'auth' | 'message' | 'typing' | 'status' | 'online' | 'read' | 'error' | 'group_message' | 'group_read' | 'group_typing' | 'group_event';
   payload: any;
 }
 
@@ -21,6 +23,9 @@ interface UseWebSocketProps {
   onTyping: (userId: string, typing: boolean) => void;
   onOnlineStatus: (users: Array<{ userId: string; username: string; online: boolean }>) => void;
   onReadReceipt: (messageIds: string[]) => void;
+  onGroupMessage?: (message: any) => void;
+  onGroupTyping?: (groupId: string, userId: string, username: string, typing: boolean) => void;
+  onGroupEvent?: (event: any) => void;
   enabled?: boolean;
 }
 
@@ -31,6 +36,9 @@ export const useWebSocket = ({
   onTyping,
   onOnlineStatus,
   onReadReceipt,
+  onGroupMessage,
+  onGroupTyping,
+  onGroupEvent,
   enabled = true,
 }: UseWebSocketProps) => {
   const ws = useRef<WebSocket | null>(null);
@@ -70,14 +78,44 @@ export const useWebSocket = ({
             break;
           case 'online':
             if (data.payload.users) {
-              onOnlineStatus(data.payload.users.map((u: any) => ({ ...u, online: true })));
+              // Received list of online users
+              onOnlineStatus(data.payload.users);
             } else {
+              // Received single user status update
               onOnlineStatus([data.payload]);
             }
             break;
           case 'read':
             if (data.payload.messageIds) {
               onReadReceipt(data.payload.messageIds);
+            }
+            break;
+          case 'group_message':
+            if (onGroupMessage) {
+              onGroupMessage(data.payload);
+            }
+            break;
+          case 'group_typing':
+            if (onGroupTyping) {
+              onGroupTyping(
+                data.payload.groupId,
+                data.payload.userId,
+                data.payload.username,
+                data.payload.typing
+              );
+            }
+            break;
+          case 'group_event':
+            if (onGroupEvent) {
+              onGroupEvent(data.payload);
+            }
+            break;
+          case 'error':
+            console.error('[WebSocket] Server error:', data.payload.message);
+            // Force logout on authentication error
+            if (data.payload.message.includes('not found') || data.payload.message.includes('log in again')) {
+              localStorage.removeItem('user');
+              window.location.reload();
             }
             break;
         }
@@ -103,7 +141,7 @@ export const useWebSocket = ({
     ws.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-  }, [userId, username, onMessage, onTyping, onOnlineStatus, onReadReceipt]);
+  }, [userId, username, onMessage, onTyping, onOnlineStatus, onReadReceipt, onGroupMessage, onGroupTyping, onGroupEvent]);
 
   useEffect(() => {
     if (!enabled || !userId) {
@@ -127,7 +165,18 @@ export const useWebSocket = ({
       ws.current.send(
         JSON.stringify({
           type: 'message',
-          payload: { to, content },
+          payload: { to, content, messageType: 'text' },
+        })
+      );
+    }
+  }, []);
+
+  const sendImage = useCallback((to: string, imageData: string) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(
+        JSON.stringify({
+          type: 'message',
+          payload: { to, content: '📷 Image', imageData, messageType: 'image' },
         })
       );
     }
@@ -167,11 +216,48 @@ export const useWebSocket = ({
     }
   }, []);
 
+  const sendGroupMessage = useCallback((groupId: string, content: string, messageType: string = 'text', imageData?: string) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(
+        JSON.stringify({
+          type: 'group_message',
+          payload: { groupId, content, messageType, imageData },
+        })
+      );
+    }
+  }, []);
+
+  const sendGroupTyping = useCallback((groupId: string, typing: boolean) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(
+        JSON.stringify({
+          type: 'group_typing',
+          payload: { groupId, typing },
+        })
+      );
+    }
+  }, []);
+
+  const sendGroupRead = useCallback((groupId: string, messageId: string) => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(
+        JSON.stringify({
+          type: 'group_read',
+          payload: { groupId, messageId },
+        })
+      );
+    }
+  }, []);
+
   return {
     connected,
     sendMessage,
+    sendImage,
     sendTyping,
     sendStatus,
     sendReadReceipt,
+    sendGroupMessage,
+    sendGroupTyping,
+    sendGroupRead,
   };
 };

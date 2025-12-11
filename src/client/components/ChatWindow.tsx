@@ -16,6 +16,8 @@ interface Message {
   content: string;
   timestamp: number;
   status: 'sent' | 'delivered' | 'read';
+  type?: 'text' | 'image';
+  imageData?: string;
 }
 
 interface ChatWindowProps {
@@ -25,6 +27,7 @@ interface ChatWindowProps {
   typingUsers: Set<string>;
   connected: boolean;
   onSendMessage: (to: string, content: string) => void;
+  onSendImage: (to: string, imageData: string) => void;
   onTyping: (to: string, typing: boolean) => void;
   onMarkAsRead: (toUserId: string, messageIds: string[]) => void;
 }
@@ -36,6 +39,7 @@ function ChatWindow({
   typingUsers,
   connected,
   onSendMessage,
+  onSendImage,
   onTyping,
   onMarkAsRead,
 }: ChatWindowProps) {
@@ -71,6 +75,12 @@ function ChatWindow({
       onSendMessage(selectedUser.id, inputValue.trim());
       setInputValue('');
       onTyping(selectedUser.id, false);
+    }
+  };
+
+  const handleSendImage = (imageData: string) => {
+    if (selectedUser) {
+      onSendImage(selectedUser.id, imageData);
     }
   };
 
@@ -115,6 +125,7 @@ function ChatWindow({
         value={inputValue}
         onChange={handleInputChange}
         onSend={handleSend}
+        onSendImage={handleSendImage}
         disabled={!connected}
       />
     </div>

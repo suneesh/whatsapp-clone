@@ -8,6 +8,8 @@ interface Message {
   content: string;
   timestamp: number;
   status: 'sent' | 'delivered' | 'read';
+  type?: 'text' | 'image';
+  imageData?: string;
 }
 
 interface MessageListProps {
@@ -107,7 +109,18 @@ function MessageList({
             data-message-id={message.id}
             className={`message ${isSent ? 'sent' : 'received'}`}
           >
-            <div className="message-content">{message.content}</div>
+            {message.type === 'image' && message.imageData ? (
+              <div className="message-image-container">
+                <img 
+                  src={message.imageData} 
+                  alt="Shared image" 
+                  className="message-image"
+                  loading="lazy"
+                />
+              </div>
+            ) : (
+              <div className="message-content">{message.content}</div>
+            )}
             <div className="message-meta">
               <span>{formatTime(message.timestamp)}</span>
               {isSent && (

@@ -17,6 +17,8 @@ interface Message {
   content: string;
   timestamp: number;
   status: 'sent' | 'delivered' | 'read';
+  type?: 'text' | 'image';
+  imageData?: string;
 }
 
 function App() {
@@ -24,9 +26,14 @@ function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [groupMessages, setGroupMessages] = useState<any[]>([]);
+  const [groupTypingUsers, setGroupTypingUsers] = useState<Map<string, Set<string>>>(new Map());
 
   // Restore user from localStorage on app mount
   useEffect(() => {
+    // Clear users list on mount - only show users who connect via WebSocket
+    setUsers([]);
+    
     try {
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
@@ -65,17 +72,26 @@ function App() {
   const handleOnlineStatus = useCallback(
     (statusUpdates: Array<{ userId: string; username: string; online: boolean }>) => {
       setUsers((prev) => {
-        const updated = [...prev];
+        let updated = [...prev];
         statusUpdates.forEach((update) => {
           const index = updated.findIndex((u) => u.id === update.userId);
-          if (index !== -1) {
-            updated[index] = { ...updated[index], online: update.online };
-          } else if (update.online && update.userId !== currentUser?.id) {
-            updated.push({
-              id: update.userId,
-              username: update.username,
-              online: true,
-            });
+          
+          if (update.online) {
+            // User came online
+            if (index !== -1) {
+              updated[index] = { ...updated[index], online: true };
+            } else if (update.userId !== currentUser?.id) {
+              updated.push({
+                id: update.userId,
+                username: update.username,
+                online: true,
+              });
+            }
+          } else {
+            // User went offline - remove them from the list
+            if (index !== -1) {
+              updated = updated.filter((u) => u.id !== update.userId);
+            }
           }
         });
         return updated;
@@ -93,15 +109,64 @@ function App() {
     );
   }, []);
 
+  const handleGroupMessage = useCallback((message: any) => {
+    setGroupMessages((prev) => {
+      const exists = prev.find((m) => m.id === message.id);
+      if (exists) {
+        return prev;
+      }
+      return [...prev, message];
+    });
+  }, []);
+
+  const handleWebSocketGroupTyping = useCallback((groupId: string, userId: string, username: string, typing: boolean) => {
+    setGroupTypingUsers((prev) => {
+      const newMap = new Map(prev);
+      const groupTyping = newMap.get(groupId) || new Set<string>();
+      
+      if (typing) {
+        groupTyping.add(userId);
+      } else {
+        groupTyping.delete(userId);
+      }
+      
+      if (groupTyping.size > 0) {
+        newMap.set(groupId, groupTyping);
+      } else {
+        newMap.delete(groupId);
+      }
+      
+      return newMap;
+    });
+  }, []);
+
+  const handleGroupEvent = useCallback((event: any) => {
+    console.log('[App] Group event:', event);
+    // Could handle group events like member added/removed here
+  }, []);
+
   // WebSocket connection - always call the hook
   const websocketEnabled = currentUser !== null;
-  const { connected, sendMessage, sendTyping, sendStatus, sendReadReceipt } = useWebSocket({
+  const { 
+    connected, 
+    sendMessage, 
+    sendImage, 
+    sendTyping, 
+    sendStatus, 
+    sendReadReceipt,
+    sendGroupMessage,
+    sendGroupTyping,
+    sendGroupRead,
+  } = useWebSocket({
     userId: currentUser?.id || '',
     username: currentUser?.username || '',
     onMessage: handleMessage,
     onTyping: handleTyping,
     onOnlineStatus: handleOnlineStatus,
     onReadReceipt: handleReadReceipt,
+    onGroupMessage: handleGroupMessage,
+    onGroupTyping: handleWebSocketGroupTyping,
+    onGroupEvent: handleGroupEvent,
     enabled: websocketEnabled,
   });
 
@@ -120,18 +185,15 @@ function App() {
 
   useEffect(() => {
     if (currentUser) {
-      fetchUsers();
+      // Don't fetch all users from database - only show users who come online via WebSocket
+      // This prevents showing stale/offline users
     }
   }, [currentUser]);
 
   const fetchUsers = async () => {
-    try {
-      const response = await fetch('/api/users');
-      const data = await response.json();
-      setUsers(data.filter((u: User) => u.id !== currentUser?.id));
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
-    }
+    // Deprecated: Don't fetch all users from database
+    // Only show users who connect via WebSocket (online users only)
+    // This prevents the stale user list issue
   };
 
   const handleLogin = async (username: string, password: string) => {
@@ -145,13 +207,13 @@ function App() {
       const data = await response.json();
 
       if (response.ok) {
-        setCurrentUser(data);
+        setCurrentUser(data as User);
         // Save user to localStorage
         localStorage.setItem('user', JSON.stringify(data));
         console.log('[App] User logged in and saved to localStorage');
       } else {
-        console.error('Login failed:', data.error);
-        throw new Error(data.error || 'Login failed');
+        console.error('Login failed:', (data as any).error);
+        throw new Error((data as any).error || 'Login failed');
       }
     } catch (error) {
       console.error('Login failed:', error);
@@ -170,13 +232,13 @@ function App() {
       const data = await response.json();
 
       if (response.ok) {
-        setCurrentUser(data);
+        setCurrentUser(data as User);
         // Save user to localStorage
         localStorage.setItem('user', JSON.stringify(data));
         console.log('[App] User registered and saved to localStorage');
       } else {
-        console.error('Registration failed:', data.error);
-        throw new Error(data.error || 'Registration failed');
+        console.error('Registration failed:', (data as any).error);
+        throw new Error((data as any).error || 'Registration failed');
       }
     } catch (error) {
       console.error('Registration failed:', error);
@@ -190,10 +252,24 @@ function App() {
     setUsers([]);
     setMessages([]);
     setTypingUsers(new Set());
+    setGroupMessages([]);
+    setGroupTypingUsers(new Map());
     // Clear localStorage
     localStorage.removeItem('user');
     console.log('[App] User logged out');
   };
+
+  const handleSendGroupMessage = useCallback((groupId: string, content: string, type?: string) => {
+    sendGroupMessage(groupId, content, type || 'text');
+  }, [sendGroupMessage]);
+
+  const handleSendGroupImage = useCallback((groupId: string, imageData: string) => {
+    sendGroupMessage(groupId, '📷 Image', 'image', imageData);
+  }, [sendGroupMessage]);
+
+  const handleGroupTyping = useCallback((groupId: string, typing: boolean) => {
+    sendGroupTyping(groupId, typing);
+  }, [sendGroupTyping]);
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} onRegister={handleRegister} />;
@@ -207,9 +283,15 @@ function App() {
       typingUsers={typingUsers}
       connected={connected}
       onSendMessage={sendMessage}
+      onSendImage={sendImage}
       onTyping={sendTyping}
       onMarkAsRead={handleMarkAsRead}
       onLogout={handleLogout}
+      groupMessages={groupMessages}
+      groupTypingUsers={groupTypingUsers}
+      onSendGroupMessage={handleSendGroupMessage}
+      onSendGroupImage={handleSendGroupImage}
+      onGroupTyping={handleGroupTyping}
     />
   );
 }

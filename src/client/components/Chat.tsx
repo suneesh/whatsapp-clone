@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
 import ChatWindow from './ChatWindow';
+import GroupChatWindow from './GroupChatWindow';
+import GroupList from './GroupList';
+import CreateGroupModal from './CreateGroupModal';
 
 interface User {
   id: string;
@@ -16,6 +19,17 @@ interface Message {
   content: string;
   timestamp: number;
   status: 'sent' | 'delivered' | 'read';
+  type?: 'text' | 'image';
+  imageData?: string;
+}
+
+interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  avatar?: string;
+  updated_at: number;
+  role: string;
 }
 
 interface ChatProps {
@@ -25,9 +39,16 @@ interface ChatProps {
   typingUsers: Set<string>;
   connected: boolean;
   onSendMessage: (to: string, content: string) => void;
+  onSendImage: (to: string, imageData: string) => void;
   onTyping: (to: string, typing: boolean) => void;
   onMarkAsRead: (toUserId: string, messageIds: string[]) => void;
   onLogout: () => void;
+  // Group props
+  groupMessages: any[];
+  groupTypingUsers: Map<string, Set<string>>;
+  onSendGroupMessage: (groupId: string, content: string, type?: string) => void;
+  onSendGroupImage: (groupId: string, imageData: string) => void;
+  onGroupTyping: (groupId: string, typing: boolean) => void;
 }
 
 function Chat({
@@ -37,31 +58,280 @@ function Chat({
   typingUsers,
   connected,
   onSendMessage,
+  onSendImage,
   onTyping,
   onMarkAsRead,
   onLogout,
+  groupMessages,
+  groupTypingUsers,
+  onSendGroupMessage,
+  onSendGroupImage,
+  onGroupTyping,
 }: ChatProps) {
+  const [view, setView] = useState<'chats' | 'groups'>('chats');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [groupDetails, setGroupDetails] = useState<any>(null);
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+
+  const handleSelectUser = (user: User) => {
+    setSelectedUser(user);
+    setSelectedGroup(null);
+    setView('chats');
+  };
+
+  const handleSelectGroup = async (group: Group) => {
+    setSelectedGroup(group);
+    setSelectedUser(null);
+    setView('groups');
+
+    // Fetch group details and members
+    try {
+      const [detailsRes, membersRes, messagesRes] = await Promise.all([
+        fetch(`/api/groups/${group.id}`, {
+          headers: { 'Authorization': `Bearer ${currentUser.id}` },
+        }),
+        fetch(`/api/groups/${group.id}/members`, {
+          headers: { 'Authorization': `Bearer ${currentUser.id}` },
+        }),
+        fetch(`/api/groups/${group.id}/messages`, {
+          headers: { 'Authorization': `Bearer ${currentUser.id}` },
+        }),
+      ]);
+
+      if (detailsRes.ok && membersRes.ok) {
+        const details = await detailsRes.json();
+        const members = await membersRes.json();
+        setGroupDetails(details);
+        setGroupMembers(members);
+      }
+    } catch (error) {
+      console.error('Failed to fetch group data:', error);
+    }
+  };
+
+  const handleCreateGroup = async (name: string, description: string, memberIds: string[], avatar?: string) => {
+    try {
+      const response = await fetch('/api/groups', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentUser.id}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, description, avatar, memberIds }),
+      });
+
+      if (response.ok) {
+        const newGroup = await response.json();
+        setShowCreateGroup(false);
+        // Refresh groups list by selecting the new group
+        handleSelectGroup({ ...newGroup, role: 'owner', updated_at: newGroup.created_at } as Group);
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to create group');
+      }
+    } catch (error) {
+      console.error('Failed to create group:', error);
+      alert('Failed to create group');
+    }
+  };
+
+  const handleUpdateGroup = async (updates: any) => {
+    if (!selectedGroup) return;
+
+    try {
+      const response = await fetch(`/api/groups/${selectedGroup.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${currentUser.id}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      });
+
+      if (response.ok) {
+        // Refresh group details
+        handleSelectGroup(selectedGroup);
+      }
+    } catch (error) {
+      console.error('Failed to update group:', error);
+    }
+  };
+
+  const handleAddMembers = async (userIds: string[]) => {
+    if (!selectedGroup) return;
+
+    try {
+      const response = await fetch(`/api/groups/${selectedGroup.id}/members`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentUser.id}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userIds }),
+      });
+
+      if (response.ok) {
+        // Refresh members
+        handleSelectGroup(selectedGroup);
+      }
+    } catch (error) {
+      console.error('Failed to add members:', error);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!selectedGroup) return;
+
+    try {
+      const response = await fetch(`/api/groups/${selectedGroup.id}/members/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${currentUser.id}`,
+        },
+      });
+
+      if (response.ok) {
+        // Refresh members
+        handleSelectGroup(selectedGroup);
+      }
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!selectedGroup) return;
+
+    try {
+      const response = await fetch(`/api/groups/${selectedGroup.id}/leave`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentUser.id}`,
+        },
+      });
+
+      if (response.ok) {
+        setSelectedGroup(null);
+        setGroupDetails(null);
+        setGroupMembers([]);
+      }
+    } catch (error) {
+      console.error('Failed to leave group:', error);
+    }
+  };
+
+  const handleUpdateMemberRole = async (userId: string, role: string) => {
+    if (!selectedGroup) return;
+
+    try {
+      const response = await fetch(`/api/groups/${selectedGroup.id}/members/${userId}/role`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${currentUser.id}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role }),
+      });
+
+      if (response.ok) {
+        // Refresh members
+        handleSelectGroup(selectedGroup);
+      }
+    } catch (error) {
+      console.error('Failed to update member role:', error);
+    }
+  };
+
+  const filteredGroupMessages = selectedGroup
+    ? groupMessages.filter(m => m.group_id === selectedGroup.id)
+    : [];
+
+  const currentGroupTypingUsers = selectedGroup
+    ? groupTypingUsers.get(selectedGroup.id) || new Set()
+    : new Set();
 
   return (
     <div className="app">
-      <Sidebar
-        currentUser={currentUser}
-        users={users}
-        selectedUser={selectedUser}
-        onSelectUser={setSelectedUser}
-        onLogout={onLogout}
-      />
-      <ChatWindow
-        currentUser={currentUser}
-        selectedUser={selectedUser}
-        messages={messages}
-        typingUsers={typingUsers}
-        connected={connected}
-        onSendMessage={onSendMessage}
-        onTyping={onTyping}
-        onMarkAsRead={onMarkAsRead}
-      />
+      <div className="app-sidebar-container">
+        <div className="view-toggle">
+          <button
+            className={`view-toggle-btn ${view === 'chats' ? 'active' : ''}`}
+            onClick={() => setView('chats')}
+          >
+            Chats
+          </button>
+          <button
+            className={`view-toggle-btn ${view === 'groups' ? 'active' : ''}`}
+            onClick={() => setView('groups')}
+          >
+            Groups
+          </button>
+        </div>
+
+        {view === 'chats' ? (
+          <Sidebar
+            currentUser={currentUser}
+            users={users}
+            selectedUser={selectedUser}
+            onSelectUser={handleSelectUser}
+            onLogout={onLogout}
+          />
+        ) : (
+          <GroupList
+            currentUserId={currentUser.id}
+            onSelectGroup={handleSelectGroup}
+            selectedGroupId={selectedGroup?.id}
+            onCreateGroup={() => setShowCreateGroup(true)}
+          />
+        )}
+      </div>
+
+      {view === 'chats' ? (
+        <ChatWindow
+          currentUser={currentUser}
+          selectedUser={selectedUser}
+          messages={messages}
+          typingUsers={typingUsers}
+          connected={connected}
+          onSendMessage={onSendMessage}
+          onSendImage={onSendImage}
+          onTyping={onTyping}
+          onMarkAsRead={onMarkAsRead}
+        />
+      ) : (
+        selectedGroup && groupDetails ? (
+          <GroupChatWindow
+            group={groupDetails}
+            currentUserId={currentUser.id}
+            messages={filteredGroupMessages}
+            members={groupMembers}
+            typingUsers={currentGroupTypingUsers}
+            onSendMessage={(content, type) => onSendGroupMessage(selectedGroup.id, content, type)}
+            onSendImage={(imageData) => onSendGroupImage(selectedGroup.id, imageData)}
+            onTyping={(typing) => onGroupTyping(selectedGroup.id, typing)}
+            onUpdateGroup={handleUpdateGroup}
+            onAddMembers={handleAddMembers}
+            onRemoveMember={handleRemoveMember}
+            onLeaveGroup={handleLeaveGroup}
+            onUpdateMemberRole={handleUpdateMemberRole}
+          />
+        ) : (
+          <div className="no-selection">
+            <p>Select a group to start messaging</p>
+          </div>
+        )
+      )}
+
+      {showCreateGroup && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroup(false)}
+          onCreate={handleCreateGroup}
+          availableUsers={users}
+          currentUserId={currentUser.id}
+        />
+      )}
     </div>
   );
 }
