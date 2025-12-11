@@ -1,0 +1,20 @@
+name = "whatsapp-clone-worker"
+main = "src/worker/index.ts"
+compatibility_date = "2024-01-01"
+
+[durable_objects]
+bindings = [
+  { name = "CHAT_ROOM", class_name = "ChatRoom" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "whatsapp_clone_db"
+database_id = "de37b143-f6b4-490c-9ff9-1b772f907f09"
+
+[vars]
+ENVIRONMENT = "development"

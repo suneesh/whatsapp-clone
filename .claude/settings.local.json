@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx wrangler login)",
+      "Bash(npx wrangler:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout 10 cmd:*)",
+      "Bash(ping:*)",
+      "Bash(npm run db:clear:*)",
+      "Bash(dir:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
