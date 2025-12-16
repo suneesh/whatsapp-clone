@@ -57,6 +57,7 @@ class MessageStorage:
                 timestamp INTEGER NOT NULL,
                 status TEXT,
                 encrypted INTEGER DEFAULT 0,
+                image_data TEXT,
                 created_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
         """)
@@ -106,8 +107,8 @@ class MessageStorage:
             # Insert message
             cursor.execute("""
                 INSERT INTO messages (
-                    id, from_user, to_user, content, type, timestamp, status, encrypted
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    id, from_user, to_user, content, type, timestamp, status, encrypted, image_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 message.id,
                 message.from_user,
@@ -117,6 +118,7 @@ class MessageStorage:
                 message.timestamp,
                 message.status,
                 1 if message.content.startswith("E2EE:") else 0,
+                message.image_data,
             ))
             
             conn.commit()
@@ -182,6 +184,7 @@ class MessageStorage:
                     type=row["type"],
                     timestamp=row["timestamp"],
                     status=row["status"],
+                    image_data=row["image_data"],
                 )
             return None
             
@@ -241,6 +244,7 @@ class MessageStorage:
                     type=row["type"],
                     timestamp=row["timestamp"],
                     status=row["status"],
+                    image_data=row["image_data"],
                 )
                 messages.append(msg)
             
@@ -288,6 +292,7 @@ class MessageStorage:
                     m.type,
                     m.timestamp,
                     m.status,
+                    m.image_data,
                     pm.peer_id
                 FROM messages m
                 JOIN peer_messages pm ON (
@@ -316,6 +321,7 @@ class MessageStorage:
                         "type": row["type"],
                         "timestamp": row["timestamp"],
                         "status": row["status"],
+                        "image_data": row["image_data"],
                     }
                 }
                 conversations.append(conv)
@@ -377,6 +383,7 @@ class MessageStorage:
                     type=row["type"],
                     timestamp=row["timestamp"],
                     status=row["status"],
+                    image_data=row["image_data"],
                 )
                 messages.append(msg)
             

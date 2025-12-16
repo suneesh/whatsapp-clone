@@ -675,6 +675,222 @@ class WhatsAppClient:
         
         return self._message_storage.search_messages(query, peer_id, limit)
     
+    async def send_image(
+        self,
+        to: str,
+        image_path: Optional[str] = None,
+        image_data: Optional[bytes] = None,
+        caption: Optional[str] = None,
+        max_size: int = 5 * 1024 * 1024,  # 5MB default
+    ) -> Message:
+        """
+        Send an encrypted image.
+        
+        Args:
+            to: Recipient user ID
+            image_path: Path to image file (mutually exclusive with image_data)
+            image_data: Image bytes (mutually exclusive with image_path)
+            caption: Optional caption for the image
+            max_size: Maximum file size in bytes (default: 5MB)
+            
+        Returns:
+            Message object
+            
+        Raises:
+            ValueError: If neither or both image_path and image_data provided
+            WhatsAppClientError: If file too large or send fails
+            
+        Example:
+            >>> # Send from file
+            >>> msg = await client.send_image(
+            ...     to="user_123",
+            ...     image_path="photo.jpg",
+            ...     caption="Check this out!"
+            ... )
+            >>> 
+            >>> # Send from bytes
+            >>> with open("photo.jpg", "rb") as f:
+            ...     data = f.read()
+            >>> await client.send_image(to="user_123", image_data=data)
+        """
+        import base64
+        from pathlib import Path
+        
+        # Validate inputs
+        if image_path is None and image_data is None:
+            raise ValueError("Either image_path or image_data must be provided")
+        if image_path is not None and image_data is not None:
+            raise ValueError("Cannot specify both image_path and image_data")
+        
+        # Load image data from file if path provided
+        if image_path:
+            path = Path(image_path)
+            if not path.exists():
+                raise WhatsAppClientError(f"Image file not found: {image_path}")
+            
+            with open(path, "rb") as f:
+                image_data = f.read()
+        
+        # Check size limit
+        if len(image_data) > max_size:
+            size_mb = len(image_data) / (1024 * 1024)
+            max_mb = max_size / (1024 * 1024)
+            raise WhatsAppClientError(
+                f"Image too large: {size_mb:.2f}MB (max: {max_mb:.2f}MB)"
+            )
+        
+        # Base64 encode image data
+        encoded_data = base64.b64encode(image_data).decode('utf-8')
+        
+        # Encrypt the base64 data if encryption enabled
+        content_to_send = encoded_data
+        if self._session_manager:
+            try:
+                await self.ensure_session(to)
+                content_to_send = self._session_manager.encrypt_message(to, encoded_data)
+            except Exception as e:
+                logger.error(f"Image encryption failed: {e}")
+                raise WhatsAppClientError(f"Image encryption failed: {e}")
+        
+        # Create message
+        message = Message(
+            id=str(uuid.uuid4()),
+            from_user=self.user_id,
+            to=to,
+            content=caption or "",
+            type="image",
+            timestamp=int(time.time() * 1000),
+            status="sent",
+            image_data=content_to_send,
+        )
+        
+        # Save to storage
+        if self._message_storage:
+            self._message_storage.save_message(message)
+        
+        # Send via WebSocket
+        if self.is_connected:
+            await self._ws.send_message(
+                to=to,
+                content=content_to_send,
+                type="image",
+            )
+        
+        logger.info(f"Sent image to {to} ({len(image_data)} bytes)")
+        return message
+    
+    async def save_image(
+        self,
+        message: Message,
+        path: str,
+        decrypt: bool = True,
+    ) -> None:
+        """
+        Save image from message to file.
+        
+        Args:
+            message: Message object with image data
+            path: Destination file path
+            decrypt: Whether to decrypt the image (default: True)
+            
+        Raises:
+            ValueError: If message is not an image type
+            WhatsAppClientError: If save fails
+            
+        Example:
+            >>> @client.on_message
+            >>> async def handle_message(msg):
+            ...     if msg.type == "image":
+            ...         await client.save_image(
+            ...             message=msg,
+            ...             path=f"downloads/{msg.id}.jpg"
+            ...         )
+        """
+        import base64
+        from pathlib import Path
+        
+        if message.type != "image":
+            raise ValueError("Message is not an image type")
+        
+        if not message.image_data:
+            raise ValueError("Message has no image data")
+        
+        # Decrypt if needed
+        image_data_b64 = message.image_data
+        if decrypt and self._session_manager:
+            try:
+                image_data_b64 = self._session_manager.decrypt_message(
+                    message.from_user,
+                    message.image_data
+                )
+            except Exception as e:
+                logger.error(f"Image decryption failed: {e}")
+                raise WhatsAppClientError(f"Image decryption failed: {e}")
+        
+        # Decode base64
+        try:
+            image_bytes = base64.b64decode(image_data_b64)
+        except Exception as e:
+            raise WhatsAppClientError(f"Failed to decode image data: {e}")
+        
+        # Create parent directory if needed
+        dest_path = Path(path)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write to file
+        try:
+            with open(dest_path, "wb") as f:
+                f.write(image_bytes)
+            logger.info(f"Saved image to {path} ({len(image_bytes)} bytes)")
+        except Exception as e:
+            raise WhatsAppClientError(f"Failed to save image: {e}")
+    
+    def decode_image(self, image_data: str, decrypt: bool = True, from_user: Optional[str] = None) -> bytes:
+        """
+        Decode and optionally decrypt image data.
+        
+        Args:
+            image_data: Base64 encoded (and possibly encrypted) image data
+            decrypt: Whether to decrypt the data (default: True)
+            from_user: User ID who sent the image (required if decrypt=True)
+            
+        Returns:
+            Image bytes
+            
+        Raises:
+            ValueError: If decrypt=True but from_user not provided
+            WhatsAppClientError: If decoding/decryption fails
+            
+        Example:
+            >>> @client.on_message
+            >>> async def handle_message(msg):
+            ...     if msg.type == "image":
+            ...         image_bytes = client.decode_image(
+            ...             image_data=msg.image_data,
+            ...             from_user=msg.from_user
+            ...         )
+        """
+        import base64
+        
+        # Decrypt if needed
+        data_b64 = image_data
+        if decrypt:
+            if not from_user:
+                raise ValueError("from_user required when decrypt=True")
+            
+            if self._session_manager:
+                try:
+                    data_b64 = self._session_manager.decrypt_message(from_user, image_data)
+                except Exception as e:
+                    logger.error(f"Image decryption failed: {e}")
+                    raise WhatsAppClientError(f"Image decryption failed: {e}")
+        
+        # Decode base64
+        try:
+            return base64.b64decode(data_b64)
+        except Exception as e:
+            raise WhatsAppClientError(f"Failed to decode image data: {e}")
+    
     def on_message(self, handler: Callable) -> Callable:
         """
         Register handler for incoming messages.
