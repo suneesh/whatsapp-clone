@@ -1,11 +1,14 @@
 """Main WhatsApp Client class."""
 
 import logging
-from typing import Optional
+from typing import Optional, Callable, List, Dict, Any
+import uuid
+import time
 
 from .auth import AuthManager
-from .transport import RestClient
+from .transport import RestClient, WebSocketClient, ConnectionState
 from .crypto import KeyManager, SessionManager
+from .storage import MessageStorage
 from .models import User, PrekeyBundle, Session, Message
 from .exceptions import WhatsAppClientError
 
@@ -58,9 +61,15 @@ class WhatsAppClient:
         self._auth = AuthManager(self)
         self._key_manager: Optional[KeyManager] = None
         self._session_manager: Optional[SessionManager] = None
+        self._ws: Optional[WebSocketClient] = None
+        self._message_storage: Optional[MessageStorage] = None
 
         # State
         self._closed = False
+        self._message_handlers: List[Callable] = []
+        self._typing_handlers: List[Callable] = []
+        self._status_handlers: List[Callable] = []
+        self._presence_handlers: List[Callable] = []
 
     @property
     def user(self) -> Optional[User]:
@@ -76,6 +85,16 @@ class WhatsAppClient:
     def is_authenticated(self) -> bool:
         """Check if user is authenticated."""
         return self._auth.is_authenticated
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if WebSocket is connected."""
+        return self._ws is not None and self._ws.is_connected
+
+    @property
+    def connection_state(self) -> Optional[ConnectionState]:
+        """Get WebSocket connection state."""
+        return self._ws.state if self._ws else None
 
     def get_fingerprint(self) -> str:
         """
@@ -184,9 +203,16 @@ class WhatsAppClient:
 
         # Initialize session manager
         self._session_manager = SessionManager(self.user_id, self.storage_path)
+        
+        # Initialize message storage
+        self._message_storage = MessageStorage(self.storage_path, self.user_id)
 
         # Upload public keys to server
         await self._upload_public_keys()
+        
+        # Connect to WebSocket if auto_connect enabled
+        if self.auto_connect:
+            await self._connect_websocket()
 
         logger.info(f"Login successful for user: {username}")
         return user
@@ -431,6 +457,258 @@ class WhatsAppClient:
             raise WhatsAppClientError("Session manager not initialized")
         
         return self._session_manager.decrypt_message(from_user, encrypted_content)
+    
+    async def _connect_websocket(self) -> None:
+        """Initialize and connect WebSocket client."""
+        if not self.user_id:
+            raise WhatsAppClientError("Not authenticated")
+        
+        logger.info("Connecting to WebSocket...")
+        self._ws = WebSocketClient(
+            server_url=self.server_url,
+            user_id=self.user_id,
+            auto_reconnect=True,
+        )
+        
+        # Register internal handlers
+        self._ws.on_message(self._handle_incoming_message)
+        self._ws.on_typing(self._handle_typing)
+        self._ws.on_status(self._handle_status)
+        self._ws.on_presence(self._handle_presence)
+        
+        await self._ws.connect()
+    
+    async def _handle_incoming_message(self, data: Dict[str, Any]) -> None:
+        """Handle incoming message from WebSocket."""
+        try:
+            # Create Message object
+            message = Message(
+                id=data.get("id", str(uuid.uuid4())),
+                from_user=data["from"],
+                to=self.user_id,
+                content=data["content"],
+                type=data.get("type", "text"),
+                timestamp=data.get("timestamp", int(time.time() * 1000)),
+                status="delivered",
+            )
+            
+            # Decrypt if encrypted
+            if message.content.startswith("E2EE:"):
+                try:
+                    message.content = self.decrypt_message(message.from_user, message.content)
+                except Exception as e:
+                    logger.error(f"Failed to decrypt message: {e}")
+                    # Keep encrypted content for debugging
+            
+            # Save to storage
+            if self._message_storage:
+                self._message_storage.save_message(message)
+            
+            # Send delivery status
+            if self._ws:
+                await self._ws.send_status_update(message.id, "delivered")
+            
+            # Notify user handlers
+            for handler in self._message_handlers:
+                try:
+                    await handler(message)
+                except Exception as e:
+                    logger.error(f"Message handler error: {e}")
+        
+        except Exception as e:
+            logger.error(f"Error handling incoming message: {e}")
+    
+    async def _handle_typing(self, data: Dict[str, Any]) -> None:
+        """Handle typing indicator."""
+        for handler in self._typing_handlers:
+            try:
+                await handler(data)
+            except Exception as e:
+                logger.error(f"Typing handler error: {e}")
+    
+    async def _handle_status(self, data: Dict[str, Any]) -> None:
+        """Handle status update."""
+        # Update message status in storage
+        if self._message_storage:
+            message_id = data.get("messageId")
+            status = data.get("status")
+            if message_id and status:
+                self._message_storage.update_message_status(message_id, status)
+        
+        # Notify user handlers
+        for handler in self._status_handlers:
+            try:
+                await handler(data)
+            except Exception as e:
+                logger.error(f"Status handler error: {e}")
+    
+    async def _handle_presence(self, data: Dict[str, Any]) -> None:
+        """Handle presence update."""
+        for handler in self._presence_handlers:
+            try:
+                await handler(data)
+            except Exception as e:
+                logger.error(f"Presence handler error: {e}")
+    
+    async def send_message_realtime(
+        self,
+        to: str,
+        content: str,
+        type: str = "text",
+        encrypt: bool = True,
+    ) -> Message:
+        """
+        Send a message in real-time via WebSocket.
+        
+        Args:
+            to: Recipient user ID
+            content: Message content
+            type: Message type (default: "text")
+            encrypt: Whether to encrypt the message (default: True)
+            
+        Returns:
+            Message object
+            
+        Raises:
+            WhatsAppClientError: If not connected or send fails
+        """
+        if not self.is_connected:
+            raise WhatsAppClientError("Not connected to WebSocket")
+        
+        # Encrypt message if requested
+        if encrypt and self._session_manager:
+            try:
+                # Ensure session exists
+                await self.ensure_session(to)
+                # Encrypt content
+                content = self._session_manager.encrypt_message(to, content)
+            except Exception as e:
+                logger.error(f"Encryption failed: {e}")
+                raise WhatsAppClientError(f"Message encryption failed: {e}")
+        
+        # Create message object
+        message = Message(
+            id=str(uuid.uuid4()),
+            from_user=self.user_id,
+            to=to,
+            content=content,
+            type=type,
+            timestamp=int(time.time() * 1000),
+            status="sent",
+        )
+        
+        # Save to storage
+        if self._message_storage:
+            self._message_storage.save_message(message)
+        
+        # Send via WebSocket
+        await self._ws.send_message(to, content, type)
+        
+        logger.debug(f"Sent message to {to}")
+        return message
+    
+    async def get_messages(
+        self,
+        peer_id: str,
+        limit: int = 50,
+        before_timestamp: Optional[int] = None,
+    ) -> List[Message]:
+        """
+        Get message history with a peer.
+        
+        Args:
+            peer_id: Peer user ID
+            limit: Maximum number of messages (default: 50)
+            before_timestamp: Get messages before this timestamp (for pagination)
+            
+        Returns:
+            List of messages in chronological order
+        """
+        if not self._message_storage:
+            raise WhatsAppClientError("Message storage not initialized")
+        
+        return self._message_storage.get_messages(peer_id, limit, before_timestamp)
+    
+    async def get_conversations(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get recent conversations.
+        
+        Args:
+            limit: Maximum number of conversations
+            
+        Returns:
+            List of conversation summaries
+        """
+        if not self._message_storage:
+            raise WhatsAppClientError("Message storage not initialized")
+        
+        return self._message_storage.get_recent_conversations(limit)
+    
+    async def search_messages(
+        self,
+        query: str,
+        peer_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Message]:
+        """
+        Search messages by content.
+        
+        Args:
+            query: Search query
+            peer_id: Optional peer to limit search
+            limit: Maximum results
+            
+        Returns:
+            List of matching messages
+        """
+        if not self._message_storage:
+            raise WhatsAppClientError("Message storage not initialized")
+        
+        return self._message_storage.search_messages(query, peer_id, limit)
+    
+    def on_message(self, handler: Callable) -> Callable:
+        """
+        Register handler for incoming messages.
+        
+        Args:
+            handler: Async function to handle messages
+            
+        Returns:
+            The handler (for decorator usage)
+            
+        Example:
+            @client.on_message
+            async def handle_message(msg):
+                print(f"{msg.from_user}: {msg.content}")
+        """
+        self._message_handlers.append(handler)
+        return handler
+    
+    def on_typing(self, handler: Callable) -> Callable:
+        """Register handler for typing indicators."""
+        self._typing_handlers.append(handler)
+        return handler
+    
+    def on_status(self, handler: Callable) -> Callable:
+        """Register handler for message status updates."""
+        self._status_handlers.append(handler)
+        return handler
+    
+    def on_presence(self, handler: Callable) -> Callable:
+        """Register handler for presence updates."""
+        self._presence_handlers.append(handler)
+        return handler
+    
+    async def send_typing(self, to: str, typing: bool = True) -> None:
+        """
+        Send typing indicator.
+        
+        Args:
+            to: User to send typing indicator to
+            typing: True if typing, False if stopped
+        """
+        if self._ws:
+            await self._ws.send_typing(to, typing)
 
     async def logout(self) -> None:
         """
@@ -439,9 +717,16 @@ class WhatsAppClient:
         Example:
             >>> await client.logout()
         """
+        # Disconnect WebSocket
+        if self._ws:
+            await self._ws.disconnect()
+            self._ws = None
+        
         await self._auth.logout()
         self._rest.set_user_id(None)
         self._key_manager = None
+        self._session_manager = None
+        self._message_storage = None
         logger.info("Logged out successfully")
 
     async def close(self) -> None:
@@ -455,6 +740,11 @@ class WhatsAppClient:
             return
 
         logger.info("Closing WhatsAppClient")
+
+        # Close WebSocket
+        if self._ws:
+            await self._ws.close()
+            self._ws = None
 
         # Logout if authenticated
         if self.is_authenticated:
