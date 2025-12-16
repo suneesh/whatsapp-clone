@@ -1,13 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import Login from './components/Login';
 import Chat from './components/Chat';
+import AdminDashboard from './components/AdminDashboard';
 import { useWebSocket } from './hooks/useWebSocket';
+import { apiFetch } from './utils/api';
 
 interface User {
   id: string;
   username: string;
   avatar?: string;
   online?: boolean;
+  role?: string;
+  is_active?: number;
+  can_send_images?: number;
+  created_at?: number;
+  disabled_at?: number;
+  disabled_by?: string;
+  lastSeen?: number;
 }
 
 interface Message {
@@ -28,6 +37,7 @@ function App() {
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [groupMessages, setGroupMessages] = useState<any[]>([]);
   const [groupTypingUsers, setGroupTypingUsers] = useState<Map<string, Set<string>>>(new Map());
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Restore user from localStorage on app mount
   useEffect(() => {
@@ -198,7 +208,7 @@ function App() {
 
   const handleLogin = async (username: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -223,7 +233,7 @@ function App() {
 
   const handleRegister = async (username: string, password: string) => {
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await apiFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -276,23 +286,32 @@ function App() {
   }
 
   return (
-    <Chat
-      currentUser={currentUser}
-      users={users}
-      messages={messages}
-      typingUsers={typingUsers}
-      connected={connected}
-      onSendMessage={sendMessage}
-      onSendImage={sendImage}
-      onTyping={sendTyping}
-      onMarkAsRead={handleMarkAsRead}
-      onLogout={handleLogout}
-      groupMessages={groupMessages}
-      groupTypingUsers={groupTypingUsers}
-      onSendGroupMessage={handleSendGroupMessage}
-      onSendGroupImage={handleSendGroupImage}
-      onGroupTyping={handleGroupTyping}
-    />
+    <>
+      <Chat
+        currentUser={currentUser}
+        users={users}
+        messages={messages}
+        typingUsers={typingUsers}
+        connected={connected}
+        onSendMessage={sendMessage}
+        onSendImage={sendImage}
+        onTyping={sendTyping}
+        onMarkAsRead={handleMarkAsRead}
+        onLogout={handleLogout}
+        onOpenAdmin={() => setShowAdminDashboard(true)}
+        groupMessages={groupMessages}
+        groupTypingUsers={groupTypingUsers}
+        onSendGroupMessage={handleSendGroupMessage}
+        onSendGroupImage={handleSendGroupImage}
+        onGroupTyping={handleGroupTyping}
+      />
+      {showAdminDashboard && currentUser.role === 'admin' && (
+        <AdminDashboard
+          currentUser={currentUser}
+          onClose={() => setShowAdminDashboard(false)}
+        />
+      )}
+    </>
   );
 }
 

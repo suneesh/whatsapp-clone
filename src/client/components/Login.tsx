@@ -54,8 +54,8 @@ function Login({ onLogin, onRegister }: LoginProps) {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>WhatsApp Clone</h1>
-        <h2>{isRegistering ? 'Create Account' : 'Welcome Back'}</h2>
+        <h1>Quick Chat</h1>
+        <h2>{isRegistering ? "Create Account" : "Welcome Back"}</h2>
         {error && <div className="error-message">{error}</div>}
         <form onSubmit={handleSubmit}>
           <input

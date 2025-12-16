@@ -3,13 +3,15 @@ import { useState, useEffect } from 'react';
 interface User {
   id: string;
   username: string;
-  role: string;
-  is_active: number;
-  can_send_images: number;
-  lastSeen: number;
-  created_at: number;
+  role?: string;
+  is_active?: number;
+  can_send_images?: number;
+  lastSeen?: number;
+  created_at?: number;
   disabled_at?: number;
   disabled_by?: string;
+  avatar?: string;
+  online?: boolean;
 }
 
 interface AdminDashboardProps {
@@ -44,7 +46,7 @@ function AdminDashboard({ currentUser, onClose }: AdminDashboardProps) {
       }
 
       const data = await response.json();
-      setUsers(data);
+      setUsers(data as User[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load users');
     } finally {
@@ -322,22 +324,22 @@ function AdminDashboard({ currentUser, onClose }: AdminDashboardProps) {
                         <span className="badge badge-danger">✗ Disabled</span>
                       )}
                     </td>
-                    <td>{formatLastSeen(user.lastSeen)}</td>
-                    <td>{formatDate(user.created_at)}</td>
+                    <td>{user.lastSeen ? formatLastSeen(user.lastSeen) : 'Never'}</td>
+                    <td>{user.created_at ? formatDate(user.created_at) : 'Unknown'}</td>
                     <td>
                       <div className="action-buttons">
                         {user.id !== currentUser.id && (
                           <>
                             <button
                               className={`action-btn ${user.is_active === 1 ? 'btn-danger' : 'btn-success'}`}
-                              onClick={() => toggleUserStatus(user.id, user.is_active)}
+                              onClick={() => toggleUserStatus(user.id, user.is_active ?? 1)}
                               title={user.is_active === 1 ? 'Disable User' : 'Enable User'}
                             >
                               {user.is_active === 1 ? '🚫' : '✓'}
                             </button>
                             <button
                               className={`action-btn ${user.can_send_images === 1 ? 'btn-warning' : 'btn-success'}`}
-                              onClick={() => toggleImagePermission(user.id, user.can_send_images)}
+                              onClick={() => toggleImagePermission(user.id, user.can_send_images ?? 1)}
                               title={user.can_send_images === 1 ? 'Revoke Image Rights' : 'Grant Image Rights'}
                             >
                               📷

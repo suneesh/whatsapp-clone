@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { WS_URL } from '../config';
 
 interface Message {
   id: string;
@@ -46,10 +47,7 @@ export const useWebSocket = ({
   const reconnectTimeout = useRef<number>();
 
   const connect = useCallback(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // In development, use the worker port (8787), in production use current port
-    const port = import.meta.env.DEV ? '8787' : window.location.port;
-    const wsUrl = `${protocol}//${window.location.hostname}:${port}/ws`;
+    const wsUrl = WS_URL;
 
     ws.current = new WebSocket(wsUrl);
 

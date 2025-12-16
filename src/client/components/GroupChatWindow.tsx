@@ -3,6 +3,13 @@ import GroupMessageList from './GroupMessageList';
 import GroupMessageInput from './GroupMessageInput';
 import GroupInfoPanel from './GroupInfoPanel';
 
+interface User {
+  id: string;
+  username: string;
+  avatar?: string;
+  can_send_images?: number;
+}
+
 interface Group {
   id: string;
   name: string;
@@ -35,7 +42,7 @@ interface GroupMember {
 
 interface GroupChatWindowProps {
   group: Group;
-  currentUserId: string;
+  currentUser: User;
   messages: GroupMessage[];
   members: GroupMember[];
   typingUsers: Set<string>;
@@ -51,7 +58,7 @@ interface GroupChatWindowProps {
 
 export default function GroupChatWindow({
   group,
-  currentUserId,
+  currentUser,
   messages,
   members,
   typingUsers,
@@ -67,7 +74,7 @@ export default function GroupChatWindow({
   const [showInfo, setShowInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const currentMember = members.find(m => m.user_id === currentUserId);
+  const currentMember = members.find(m => m.user_id === currentUser.id);
   const isAdmin = currentMember?.role === 'admin' || currentMember?.role === 'owner';
   const isOwner = currentMember?.role === 'owner';
 
@@ -116,7 +123,7 @@ export default function GroupChatWindow({
         <div className={`group-chat-messages ${showInfo ? 'with-info-panel' : ''}`}>
           <GroupMessageList
             messages={messages}
-            currentUserId={currentUserId}
+            currentUserId={currentUser.id}
             members={members}
             typingUsers={typingUsers}
           />
@@ -130,6 +137,7 @@ export default function GroupChatWindow({
                 ? 'Only admins can send messages in this group'
                 : undefined
             }
+            canSendImages={currentUser.can_send_images !== 0}
           />
         </div>
 
@@ -137,7 +145,7 @@ export default function GroupChatWindow({
           <GroupInfoPanel
             group={group}
             members={members}
-            currentUserId={currentUserId}
+            currentUserId={currentUser.id}
             isAdmin={isAdmin}
             isOwner={isOwner}
             onClose={() => setShowInfo(false)}

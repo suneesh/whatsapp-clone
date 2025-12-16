@@ -7,6 +7,7 @@ interface User {
   username: string;
   avatar?: string;
   online?: boolean;
+  can_send_images?: number;
 }
 
 interface Message {
@@ -127,6 +128,7 @@ function ChatWindow({
         onSend={handleSend}
         onSendImage={handleSendImage}
         disabled={!connected}
+        canSendImages={currentUser.can_send_images !== 0}
       />
     </div>
   );

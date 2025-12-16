@@ -6,6 +6,7 @@ interface MessageInputProps {
   onSend: () => void;
   onSendImage: (imageData: string) => void;
   disabled: boolean;
+  canSendImages?: boolean;
 }
 
 const EMOJI_LIST = [
@@ -27,7 +28,7 @@ const EMOJI_LIST = [
   '🔥', '💯', '👀', '💬', '💭', '🗨️', '🗯️', '💤', '🚀', '🎯',
 ];
 
-function MessageInput({ value, onChange, onSend, onSendImage, disabled }: MessageInputProps) {
+function MessageInput({ value, onChange, onSend, onSendImage, disabled, canSendImages = true }: MessageInputProps) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -101,22 +102,26 @@ function MessageInput({ value, onChange, onSend, onSendImage, disabled }: Messag
       >
         😀
       </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleImageSelect}
-        style={{ display: 'none' }}
-      />
-      <button
-        type="button"
-        className="image-button"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={disabled}
-        title="Send image"
-      >
-        📷
-      </button>
+      {canSendImages && (
+        <>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageSelect}
+            style={{ display: 'none' }}
+          />
+          <button
+            type="button"
+            className="image-button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+            title="Send image"
+          >
+            📷
+          </button>
+        </>
+      )}
       {showEmojiPicker && (
         <div className="emoji-picker" ref={emojiPickerRef}>
           <div className="emoji-grid">

@@ -3,6 +3,7 @@ interface User {
   username: string;
   avatar?: string;
   online?: boolean;
+  role?: string;
 }
 
 interface SidebarProps {
@@ -11,9 +12,11 @@ interface SidebarProps {
   selectedUser: User | null;
   onSelectUser: (user: User) => void;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
+  unreadCounts?: Map<string, number>;
 }
 
-function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout }: SidebarProps) {
+function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout, onOpenAdmin, unreadCounts }: SidebarProps) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -21,9 +24,16 @@ function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout }: S
           <h2>Chats</h2>
           <div className="user-info">{currentUser.username}</div>
         </div>
-        <button className="logout-btn" onClick={onLogout}>
-          Logout
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {currentUser.role === 'admin' && onOpenAdmin && (
+            <button className="admin-panel-btn" onClick={onOpenAdmin}>
+              👑 Admin
+            </button>
+          )}
+          <button className="logout-btn" onClick={onLogout}>
+            Logout
+          </button>
+        </div>
       </div>
       <div className="user-list">
         {users.length === 0 ? (
@@ -31,21 +41,27 @@ function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout }: S
             No users online
           </div>
         ) : (
-          users.map((user) => (
-            <div
-              key={user.id}
-              className={`user-item ${selectedUser?.id === user.id ? 'active' : ''}`}
-              onClick={() => onSelectUser(user)}
-            >
-              <div className="user-avatar">{user.username.charAt(0).toUpperCase()}</div>
-              <div className="user-details">
-                <div className="user-name">{user.username}</div>
-                <div className={`user-status ${user.online ? 'online' : ''}`}>
-                  {user.online ? 'online' : 'offline'}
+          users.map((user) => {
+            const unreadCount = unreadCounts?.get(user.id) || 0;
+            return (
+              <div
+                key={user.id}
+                className={`user-item ${selectedUser?.id === user.id ? 'active' : ''}`}
+                onClick={() => onSelectUser(user)}
+              >
+                <div className="user-avatar">{user.username.charAt(0).toUpperCase()}</div>
+                <div className="user-details">
+                  <div className="user-name">{user.username}</div>
+                  <div className={`user-status ${user.online ? 'online' : ''}`}>
+                    {user.online ? 'online' : 'offline'}
+                  </div>
                 </div>
+                {unreadCount > 0 && (
+                  <div className="unread-badge">{unreadCount}</div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

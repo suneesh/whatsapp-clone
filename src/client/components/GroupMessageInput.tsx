@@ -6,6 +6,7 @@ interface GroupMessageInputProps {
   onTyping: (typing: boolean) => void;
   disabled?: boolean;
   disabledMessage?: string;
+  canSendImages?: boolean;
 }
 
 export default function GroupMessageInput({
@@ -14,6 +15,7 @@ export default function GroupMessageInput({
   onTyping,
   disabled,
   disabledMessage,
+  canSendImages = true,
 }: GroupMessageInputProps) {
   const [message, setMessage] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -119,23 +121,27 @@ export default function GroupMessageInput({
           😊
         </button>
 
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="image-btn"
-          disabled={disabled}
-          title="Send image"
-        >
-          📷
-        </button>
+        {canSendImages && (
+          <>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="image-btn"
+              disabled={disabled}
+              title="Send image"
+            >
+              📷
+            </button>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleImageSelect}
-          style={{ display: 'none' }}
-        />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+            />
+          </>
+        )}
 
         <input
           type="text"

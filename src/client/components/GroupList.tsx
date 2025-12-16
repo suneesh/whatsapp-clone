@@ -14,15 +14,29 @@ interface GroupListProps {
   onSelectGroup: (group: Group) => void;
   selectedGroupId?: string;
   onCreateGroup: () => void;
+  groups?: Group[];
+  unreadCounts?: Map<string, number>;
 }
 
-export default function GroupList({ currentUserId, onSelectGroup, selectedGroupId, onCreateGroup }: GroupListProps) {
-  const [groups, setGroups] = useState<Group[]>([]);
+export default function GroupList({ 
+  currentUserId, 
+  onSelectGroup, 
+  selectedGroupId, 
+  onCreateGroup,
+  groups: propGroups,
+  unreadCounts,
+}: GroupListProps) {
+  const [groups, setGroups] = useState<Group[]>(propGroups || []);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchGroups();
-  }, [currentUserId]);
+    if (propGroups) {
+      setGroups(propGroups);
+      setLoading(false);
+    } else {
+      fetchGroups();
+    }
+  }, [currentUserId, propGroups]);
 
   const fetchGroups = async () => {
     try {
@@ -80,31 +94,39 @@ export default function GroupList({ currentUserId, onSelectGroup, selectedGroupI
             <button onClick={onCreateGroup} className="btn-primary">Create a Group</button>
           </div>
         ) : (
-          groups.map((group) => (
-            <div
-              key={group.id}
-              className={`group-item ${selectedGroupId === group.id ? 'active' : ''}`}
-              onClick={() => onSelectGroup(group)}
-            >
-              <div className="group-avatar">
-                {group.avatar ? (
-                  <img src={group.avatar} alt={group.name} />
-                ) : (
-                  <div className="group-avatar-placeholder">
-                    {group.name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+          groups.map((group) => {
+            const unreadCount = unreadCounts?.get(group.id) || 0;
+            return (
+              <div
+                key={group.id}
+                className={`group-item ${selectedGroupId === group.id ? 'active' : ''}`}
+                onClick={() => onSelectGroup(group)}
+              >
+                <div className="group-avatar">
+                  {group.avatar ? (
+                    <img src={group.avatar} alt={group.name} />
+                  ) : (
+                    <div className="group-avatar-placeholder">
+                      {group.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <div className="group-info">
+                  <div className="group-name">{group.name}</div>
+                  {group.description && (
+                    <div className="group-description">{group.description}</div>
+                  )}
+                  <div className="group-role">{group.role}</div>
+                </div>
+                <div className="group-meta">
+                  <div className="group-time">{formatTime(group.updated_at)}</div>
+                  {unreadCount > 0 && (
+                    <div className="unread-badge">{unreadCount}</div>
+                  )}
+                </div>
               </div>
-              <div className="group-info">
-                <div className="group-name">{group.name}</div>
-                {group.description && (
-                  <div className="group-description">{group.description}</div>
-                )}
-                <div className="group-role">{group.role}</div>
-              </div>
-              <div className="group-time">{formatTime(group.updated_at)}</div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

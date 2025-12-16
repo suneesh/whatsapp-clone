@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import ChatWindow from './ChatWindow';
 import GroupChatWindow from './GroupChatWindow';
@@ -10,6 +10,10 @@ interface User {
   username: string;
   avatar?: string;
   online?: boolean;
+  role?: string;
+  is_active?: number;
+  can_send_images?: number;
+  created_at?: number;
 }
 
 interface Message {
@@ -43,6 +47,7 @@ interface ChatProps {
   onTyping: (to: string, typing: boolean) => void;
   onMarkAsRead: (toUserId: string, messageIds: string[]) => void;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
   // Group props
   groupMessages: any[];
   groupTypingUsers: Map<string, Set<string>>;
@@ -62,6 +67,7 @@ function Chat({
   onTyping,
   onMarkAsRead,
   onLogout,
+  onOpenAdmin,
   groupMessages,
   groupTypingUsers,
   onSendGroupMessage,
@@ -74,17 +80,51 @@ function Chat({
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groupDetails, setGroupDetails] = useState<any>(null);
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+
+  // Fetch groups when component mounts or view changes to groups
+  useEffect(() => {
+    if (view === 'groups') {
+      fetchGroups();
+    }
+  }, [view]);
+
+  const fetchGroups = async () => {
+    try {
+      const response = await fetch('/api/groups', {
+        headers: {
+          'Authorization': `Bearer ${currentUser.id}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setGroups(data as Group[]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch groups:', error);
+    }
+  };
 
   const handleSelectUser = (user: User) => {
     setSelectedUser(user);
     setSelectedGroup(null);
     setView('chats');
+    // Hide sidebar on mobile when user is selected
+    if (window.innerWidth <= 768) {
+      setSidebarVisible(false);
+    }
   };
 
-  const handleSelectGroup = async (group: Group) => {
+  const handleSelectGroup = async (group: any) => {
     setSelectedGroup(group);
     setSelectedUser(null);
     setView('groups');
+    // Hide sidebar on mobile when group is selected
+    if (window.innerWidth <= 768) {
+      setSidebarVisible(false);
+    }
 
     // Fetch group details and members
     try {
@@ -125,6 +165,8 @@ function Chat({
       if (response.ok) {
         const newGroup = await response.json();
         setShowCreateGroup(false);
+        // Refresh groups list
+        await fetchGroups();
         // Refresh groups list by selecting the new group
         handleSelectGroup({ ...newGroup, role: 'owner', updated_at: newGroup.created_at } as Group);
       } else {
@@ -252,9 +294,56 @@ function Chat({
     ? groupTypingUsers.get(selectedGroup.id) || new Set()
     : new Set();
 
+  // Calculate unread message counts for each user
+  const unreadCounts = new Map<string, number>();
+  users.forEach(user => {
+    const count = messages.filter(m => 
+      m.from === user.id && 
+      m.to === currentUser.id && 
+      m.status !== 'read'
+    ).length;
+    if (count > 0) {
+      unreadCounts.set(user.id, count);
+    }
+  });
+
+  // Calculate unread message counts for each group
+  const groupUnreadCounts = new Map<string, number>();
+  groups.forEach(group => {
+    const count = groupMessages.filter(m => 
+      m.group_id === group.id && 
+      m.from_user !== currentUser.id &&
+      // Check if current user hasn't read this message
+      !m.read_by?.includes(currentUser.id)
+    ).length;
+    if (count > 0) {
+      groupUnreadCounts.set(group.id, count);
+    }
+  });
+
   return (
     <div className="app">
-      <div className="app-sidebar-container">
+      {/* Mobile sidebar toggle button */}
+      {!sidebarVisible && (
+        <button 
+          className="mobile-sidebar-toggle"
+          onClick={() => setSidebarVisible(true)}
+          aria-label="Show sidebar"
+        >
+          ☰
+        </button>
+      )}
+
+      <div className={`app-sidebar-container ${sidebarVisible ? 'visible' : 'hidden'}`}>
+        {/* Close button for mobile */}
+        <button 
+          className="mobile-sidebar-close"
+          onClick={() => setSidebarVisible(false)}
+          aria-label="Hide sidebar"
+        >
+          ✕
+        </button>
+
         <div className="view-toggle">
           <button
             className={`view-toggle-btn ${view === 'chats' ? 'active' : ''}`}
@@ -277,6 +366,8 @@ function Chat({
             selectedUser={selectedUser}
             onSelectUser={handleSelectUser}
             onLogout={onLogout}
+            onOpenAdmin={onOpenAdmin}
+            unreadCounts={unreadCounts}
           />
         ) : (
           <GroupList
@@ -284,6 +375,8 @@ function Chat({
             onSelectGroup={handleSelectGroup}
             selectedGroupId={selectedGroup?.id}
             onCreateGroup={() => setShowCreateGroup(true)}
+            groups={groups}
+            unreadCounts={groupUnreadCounts}
           />
         )}
       </div>
@@ -304,7 +397,7 @@ function Chat({
         selectedGroup && groupDetails ? (
           <GroupChatWindow
             group={groupDetails}
-            currentUserId={currentUser.id}
+            currentUser={currentUser}
             messages={filteredGroupMessages}
             members={groupMembers}
             typingUsers={currentGroupTypingUsers}

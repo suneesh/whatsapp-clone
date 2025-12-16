@@ -1,4 +1,4 @@
-# WhatsApp Clone
+# Quick Chat
 
 A real-time chat application built with React and Cloudflare Workers, featuring WebSocket communication for instant messaging.
 

@@ -1,7 +1,7 @@
 {
-  "name": "whatsapp-clone",
+  "name": "quick-chat",
   "version": "1.0.0",
-  "description": "WhatsApp clone with Cloudflare Workers backend",
+  "description": "Quick Chat - Real-time messaging with Cloudflare Workers backend",
   "scripts": {
     "dev": "concurrently \"npm run dev:worker\" \"npm run dev:client\"",
     "dev:worker": "npx wrangler dev",
@@ -31,6 +31,6 @@
     "concurrently": "^8.2.2",
     "typescript": "^5.3.3",
     "vite": "^5.0.8",
-    "wrangler": "^3.22.1"
+    "wrangler": "^4.54.0"
   }
 }
