@@ -118,3 +118,4 @@ class Session(BaseModel):
     initial_message_key: str
     created_at: str
     one_time_prekey_used: Optional[str] = None
+    ratchet_state: Optional[dict] = None  # Serialized ratchet state

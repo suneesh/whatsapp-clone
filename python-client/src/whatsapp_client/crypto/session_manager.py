@@ -4,13 +4,14 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 from pathlib import Path
 
-from nacl.public import PrivateKey
+from nacl.public import PrivateKey, PublicKey
 from nacl.encoding import RawEncoder
 
 from .x3dh import X3DHProtocol
+from .ratchet import RatchetEngine, RatchetHeader
 from ..models import PrekeyBundle, Session
 from ..exceptions import WhatsAppClientError
 
@@ -142,6 +143,133 @@ class SessionManager:
         logger.info(f"Session established with {peer_id}: {session.session_id}")
         return session
     
+    def encrypt_message(self, peer_id: str, plaintext: str) -> str:
+        """
+        Encrypt a message for peer.
+        
+        Args:
+            peer_id: Peer's user ID
+            plaintext: Message to encrypt
+            
+        Returns:
+            Encrypted message with E2EE: prefix
+            
+        Raises:
+            WhatsAppClientError: If no session exists or encryption fails
+        """
+        session = self.get_session(peer_id)
+        if not session:
+            raise WhatsAppClientError(f"No session with {peer_id}")
+        
+        # Get or initialize ratchet
+        ratchet = self._get_ratchet(session)
+        
+        # Encrypt message
+        ciphertext, header = ratchet.encrypt(plaintext)
+        
+        # Update session with new ratchet state
+        session.ratchet_state = ratchet.serialize_state()
+        self._save_session(session)
+        
+        # Create encrypted message payload
+        payload = {
+            "ciphertext": ciphertext,
+            "header": header.to_dict(),
+        }
+        
+        # Return with E2EE prefix
+        return f"E2EE:{json.dumps(payload)}"
+    
+    def decrypt_message(self, peer_id: str, encrypted_message: str) -> str:
+        """
+        Decrypt a message from peer.
+        
+        Args:
+            peer_id: Peer's user ID
+            encrypted_message: Encrypted message (with or without E2EE: prefix)
+            
+        Returns:
+            Decrypted plaintext
+            
+        Raises:
+            WhatsAppClientError: If no session exists or decryption fails
+        """
+        session = self.get_session(peer_id)
+        if not session:
+            raise WhatsAppClientError(f"No session with {peer_id}")
+        
+        # Strip E2EE: prefix if present
+        message = encrypted_message
+        if message.startswith("E2EE:"):
+            message = message[5:]
+        
+        # Parse encrypted payload
+        try:
+            payload = json.loads(message)
+            ciphertext = payload["ciphertext"]
+            header = RatchetHeader.from_dict(payload["header"])
+        except (json.JSONDecodeError, KeyError) as e:
+            raise WhatsAppClientError(f"Invalid encrypted message format: {e}")
+        
+        # Get or initialize ratchet
+        ratchet = self._get_ratchet(session)
+        
+        # Try skipped keys first (for out-of-order messages)
+        plaintext = ratchet.try_skipped_message_keys(ciphertext, header)
+        
+        if plaintext is None:
+            # Decrypt with current ratchet state
+            plaintext = ratchet.decrypt(ciphertext, header)
+        
+        # Update session with new ratchet state
+        session.ratchet_state = ratchet.serialize_state()
+        self._save_session(session)
+        
+        return plaintext
+    
+    def _get_ratchet(self, session: Session) -> RatchetEngine:
+        """
+        Get or initialize ratchet for session.
+        
+        Args:
+            session: Session object
+            
+        Returns:
+            RatchetEngine instance
+        """
+        # If ratchet state exists, deserialize it
+        if session.ratchet_state:
+            return RatchetEngine.deserialize_state(session.ratchet_state)
+        
+        # Initialize new ratchet as sender
+        ratchet = RatchetEngine()
+        
+        # Get shared secret from X3DH
+        shared_secret = bytes.fromhex(session.shared_secret)
+        ephemeral_key = PrivateKey(bytes.fromhex(session.ephemeral_key), encoder=RawEncoder)
+        
+        # Initialize as receiver first (we have our DH key from X3DH)
+        ratchet.initialize_receiver(shared_secret, ephemeral_key)
+        
+        # For initial encryption, we need to perform DH ratchet with a new key pair
+        # Generate new DH key pair
+        ratchet.state.dh_self = PrivateKey.generate()
+        
+        # Derive sending chain (without remote DH key yet - will be set from first message)
+        # For now, derive from root key directly
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+        
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"WhatsAppCloneRatchet",
+            info=b"InitialSendingChain",
+        )
+        ratchet.state.sending_chain_key = hkdf.derive(shared_secret)
+        
+        return ratchet
+    
     def delete_session(self, peer_id: str) -> None:
         """
         Delete session with peer.
@@ -175,6 +303,7 @@ class SessionManager:
             "initial_message_key": session.initial_message_key,
             "created_at": session.created_at,
             "one_time_prekey_used": session.one_time_prekey_used,
+            "ratchet_state": session.ratchet_state,
         }
         
         with open(session_file, 'w') as f:
@@ -204,6 +333,7 @@ class SessionManager:
                 initial_message_key=session_data["initial_message_key"],
                 created_at=session_data["created_at"],
                 one_time_prekey_used=session_data.get("one_time_prekey_used"),
+                ratchet_state=session_data.get("ratchet_state"),
             )
             
             logger.debug(f"Loaded session from {session_file}")

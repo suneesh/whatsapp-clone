@@ -6,7 +6,7 @@ from typing import Optional
 from .auth import AuthManager
 from .transport import RestClient
 from .crypto import KeyManager, SessionManager
-from .models import User, PrekeyBundle, Session
+from .models import User, PrekeyBundle, Session, Message
 from .exceptions import WhatsAppClientError
 
 logger = logging.getLogger(__name__)
@@ -342,6 +342,95 @@ class WhatsAppClient:
         if not self._session_manager:
             return []
         return self._session_manager.list_sessions()
+    
+    async def send_message(
+        self,
+        to: str,
+        content: str,
+        message_type: str = "text",
+    ) -> Message:
+        """
+        Send an encrypted message to a user.
+        
+        Args:
+            to: Recipient user ID
+            content: Message content (will be encrypted)
+            message_type: Message type (default: "text")
+            
+        Returns:
+            Message object with sent message details
+            
+        Raises:
+            WhatsAppClientError: If not authenticated or sending fails
+            
+        Example:
+            >>> message = await client.send_message("bob_user_id", "Hello Bob!")
+            >>> print(f"Message sent: {message.id}")
+        """
+        if not self.is_authenticated:
+            raise WhatsAppClientError("Not authenticated")
+        if not self._session_manager:
+            raise WhatsAppClientError("Session manager not initialized")
+        
+        # Ensure session exists with recipient
+        await self.ensure_session(to)
+        
+        # Encrypt message
+        encrypted_content = self._session_manager.encrypt_message(to, content)
+        
+        # Send encrypted message to server
+        message_data = {
+            "to": to,
+            "content": encrypted_content,
+            "type": message_type,
+        }
+        
+        try:
+            response = await self._rest.post("/api/messages", data=message_data)
+            
+            if "error" in response:
+                raise WhatsAppClientError(f"Failed to send message: {response['error']}")
+            
+            # Parse response into Message model
+            message = Message(
+                id=response["id"],
+                from_user=response["from"],
+                to=response["to"],
+                content=content,  # Return decrypted content
+                timestamp=response["timestamp"],
+                status=response.get("status", "sent"),
+                type=response.get("type", "text"),
+            )
+            
+            logger.info(f"Message sent to {to}: {message.id}")
+            return message
+            
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            raise WhatsAppClientError(f"Failed to send message: {e}")
+    
+    def decrypt_message(self, from_user: str, encrypted_content: str) -> str:
+        """
+        Decrypt a received message.
+        
+        Args:
+            from_user: Sender user ID
+            encrypted_content: Encrypted message content
+            
+        Returns:
+            Decrypted plaintext
+            
+        Raises:
+            WhatsAppClientError: If no session or decryption fails
+            
+        Example:
+            >>> plaintext = client.decrypt_message("alice_user_id", "E2EE:...")
+            >>> print(f"Decrypted: {plaintext}")
+        """
+        if not self._session_manager:
+            raise WhatsAppClientError("Session manager not initialized")
+        
+        return self._session_manager.decrypt_message(from_user, encrypted_content)
 
     async def logout(self) -> None:
         """

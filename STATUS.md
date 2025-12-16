@@ -1,4 +1,4 @@
-# WhatsApp Clone - Setup Complete! ✅
+# WhatsApp Clone - Development Status
 
 ## Servers Running
 
@@ -10,43 +10,128 @@
 ✅ Database created: `whatsapp_clone_db`
 ✅ Database ID: `de37b143-f6b4-490c-9ff9-1b772f907f09`
 ✅ Schema initialized (local & remote)
-✅ Tables created: `users`, `messages`
+✅ Tables created: `users`, `messages`, `user_identity_keys`, `user_prekeys`
 
-## Resources Available
+## Python Client Development Progress
 
-- **Durable Objects**: ChatRoom (for WebSocket connections)
-- **D1 Database**: whatsapp_clone_db
-- **Environment**: development
+### Completed User Stories (42/105 story points - 40%)
+
+#### ✅ US1: Client Initialization and Authentication (8 pts)
+- Client initialization with server URL and storage path
+- Login/logout functionality with server authentication
+- Key generation and upload on login
+- 9/9 tests passing
+
+#### ✅ US2: Cryptographic Key Generation (5 pts)
+- X25519 identity key pair generation
+- Ed25519 signed prekey with signature
+- One-time prekey bundle generation (100 keys)
+- Key persistence and fingerprint generation
+- 8/8 tests passing
+
+#### ✅ US3: Session Establishment (X3DH) (8 pts)
+- X3DH protocol implementation
+- Prekey bundle retrieval from server
+- Shared secret calculation with DH operations
+- Session persistence and management
+- 14/14 tests passing
+
+#### ✅ US4: Message Encryption (Double Ratchet) (13 pts)
+- Complete Double Ratchet algorithm implementation
+- DH ratchet for forward secrecy
+- Symmetric-key ratchet for message keys
+- NaCl SecretBox (XSalsa20-Poly1305) encryption
+- HKDF-SHA256 for key derivation
+- Out-of-order message handling
+- DoS protection with max skipped keys
+- 15/15 tests passing (shared with US5)
+
+#### ✅ US5: Message Decryption (8 pts)
+- Message decryption with Double Ratchet
+- Skipped message key storage and retrieval
+- DH ratchet on receiving new keys
+- Session state persistence
+- 15/15 tests passing (shared with US4)
+
+### Implementation Summary
+
+**Total Tests**: 50/50 passing (100%)
+- Authentication: 9 tests
+- Cryptography: 8 tests  
+- Models: 4 tests
+- Sessions (X3DH): 14 tests
+- Ratchet (Encryption/Decryption): 15 tests
+
+**Files Created**:
+- `python-client/src/whatsapp_client/client.py` - Main client API
+- `python-client/src/whatsapp_client/crypto/keys.py` - Key generation
+- `python-client/src/whatsapp_client/crypto/session_manager.py` - X3DH & sessions
+- `python-client/src/whatsapp_client/crypto/ratchet.py` - Double Ratchet algorithm
+- `python-client/src/whatsapp_client/models.py` - Data models
+- `python-client/src/whatsapp_client/exceptions.py` - Custom exceptions
+- `python-client/tests/*` - Comprehensive test suite
+
+### Remaining User Stories (63/105 story points)
+
+- US6: Send/Receive Messages (8 pts) - WebSocket integration
+- US7: Contact Management (5 pts)
+- US8: Group Chat (13 pts)
+- US9: Media Messages (8 pts)
+- US10: Typing Indicators (3 pts)
+- US11: Read Receipts (5 pts)
+- US12: Online Presence (5 pts)
+- US13: User Profile (3 pts)
+- US14: Search (5 pts)
+- US15: Notifications (3 pts)
+- US16: Message History (3 pts)
+- US17: Error Handling (2 pts)
+
+## Features Available
+
+### Web Application (TypeScript/React)
+- ✉️ Send messages in real-time (WebSocket)
+- 👁️ See online/offline status
+- ⌨️ Typing indicators
+- ✓ Message delivery status (sent/delivered)
+- 💬 Message persistence
+- 🔐 E2EE keys auto-generate on login
+
+### Python Client Library
+- ✅ Complete E2EE implementation (X3DH + Double Ratchet)
+- ✅ Authentication and session management
+- ✅ Message encryption/decryption
+- ⏳ Real-time messaging (WebSocket) - Next up
+- ⏳ Contact management
+- ⏳ Group chat support
 
 ## How to Test
 
+### Web Application
 1. **Open the app**: Navigate to http://localhost:3000 in your browser
 2. **First user**: Enter a username (e.g., "Alice") and click Continue
 3. **Second user**: Open http://localhost:3000 in another browser/tab/incognito
 4. **Login**: Enter a different username (e.g., "Bob")
 5. **Chat**: Click on a user in the sidebar and start messaging!
 
-## Features to Test
+### Python Client
+```bash
+cd python-client
+pytest -v  # Run all 50 tests
+```
 
-- ✉️ Send messages in real-time
-- 👁️ See online/offline status
-- ⌨️ Typing indicators (start typing to see)
-- ✓ Message delivery status (sent/delivered)
-- 💬 Message persistence (refresh page, messages are saved)
-- 🔐 E2EE keys auto-generate on login (US1)
-    - Fingerprint now visible in the sidebar
-    - Identity + prekeys upload automatically
-    - Server exposes `/api/users/prekeys`, `/api/users/prekeys/status`, and `/api/users/:id/prekeys`
+## Database Migration
 
-### Database Migration (new)
-
-Run the latest migration to create `user_identity_keys` and `user_prekeys` tables:
+Run the latest migration to create all required tables:
 
 ```bash
 wrangler d1 migrations apply whatsapp_clone_db
 ```
 
 If you are targeting a remote environment add `--remote` to the command.
+
+## Stop the Servers
+
+Press `Ctrl+C` in the terminal to stop both servers.
 
 ## Stop the Servers
 
