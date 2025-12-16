@@ -4,6 +4,7 @@ import { PrekeyBundlePayload } from '../crypto/types';
 import { SessionManager } from '../crypto/SessionManager';
 import { StoredSessionRecord } from '../storage/KeyStorage';
 import { apiFetch } from '../utils/api';
+import { SerializedEncryptedMessage } from '../crypto/RatchetEngine';
 
 interface UseE2EEResult {
   ready: boolean;
@@ -12,6 +13,8 @@ interface UseE2EEResult {
   error: string | null;
   ensureSession: (peerId: string) => Promise<void>;
   sessions: Record<string, SessionViewState>;
+  encryptMessage: (peerId: string, plaintext: string) => Promise<SerializedEncryptedMessage>;
+  decryptMessage: (peerId: string, encrypted: SerializedEncryptedMessage) => Promise<string>;
 }
 
 export type SessionViewStatus = 'idle' | 'establishing' | 'ready' | 'error';
@@ -229,6 +232,26 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
     [sessionManager, userId]
   );
 
+  const encryptMessage = useCallback(
+    async (peerId: string, plaintext: string): Promise<SerializedEncryptedMessage> => {
+      if (!sessionManager) {
+        throw new Error('E2EE not initialized');
+      }
+      return await sessionManager.encryptMessage(peerId, plaintext);
+    },
+    [sessionManager]
+  );
+
+  const decryptMessage = useCallback(
+    async (peerId: string, encrypted: SerializedEncryptedMessage): Promise<string> => {
+      if (!sessionManager) {
+        throw new Error('E2EE not initialized');
+      }
+      return await sessionManager.decryptMessage(peerId, encrypted);
+    },
+    [sessionManager]
+  );
+
   useEffect(() => {
     if (!manager || !userId || typeof window === 'undefined') {
       return;
@@ -285,5 +308,7 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
     error,
     ensureSession,
     sessions,
+    encryptMessage,
+    decryptMessage,
   };
 }

@@ -46,6 +46,8 @@ function App() {
     error: e2eeError,
     ensureSession,
     sessions: sessionStates,
+    encryptMessage,
+    decryptMessage,
   } = useE2EE(currentUser?.id);
 
   // Restore user from localStorage on app mount
@@ -66,15 +68,35 @@ function App() {
     }
   }, []);
 
-  const handleMessage = useCallback((message: Message) => {
-    setMessages((prev) => {
-      const exists = prev.find((m) => m.id === message.id);
-      if (exists) {
-        return prev.map((m) => (m.id === message.id ? message : m));
+  const handleMessage = useCallback(async (message: Message) => {
+    // Decrypt if encrypted (starts with E2EE: marker)
+    let decryptedMessage = message;
+    if (message.type === 'text' && message.content.startsWith('E2EE:')) {
+      try {
+        const encryptedPayload = message.content.substring(5); // Remove "E2EE:" prefix
+        const encryptedData = JSON.parse(encryptedPayload);
+        const plaintext = await decryptMessage(message.from, encryptedData);
+        decryptedMessage = {
+          ...message,
+          content: plaintext,
+        };
+      } catch (err) {
+        console.error('[E2EE] Failed to decrypt message:', err);
+        decryptedMessage = {
+          ...message,
+          content: '🔒 [Decryption failed]',
+        };
       }
-      return [...prev, message];
+    }
+
+    setMessages((prev) => {
+      const exists = prev.find((m) => m.id === decryptedMessage.id);
+      if (exists) {
+        return prev.map((m) => (m.id === decryptedMessage.id ? decryptedMessage : m));
+      }
+      return [...prev, decryptedMessage];
     });
-  }, []);
+  }, [decryptMessage]);
 
   const handleTyping = useCallback((userId: string, typing: boolean) => {
     setTypingUsers((prev) => {
@@ -290,6 +312,34 @@ function App() {
     sendGroupTyping(groupId, typing);
   }, [sendGroupTyping]);
 
+  const handleSendMessage = useCallback(async (to: string, content: string) => {
+    if (!e2eeReady) {
+      console.warn('[E2EE] Not ready, sending unencrypted');
+      sendMessage(to, content);
+      return;
+    }
+
+    try {
+      // Ensure session exists
+      await ensureSession(to);
+      
+      // Encrypt the message
+      const encrypted = await encryptMessage(to, content);
+      
+      // Send encrypted message - prefix with E2EE marker so we can identify it
+      const encryptedPayload = `E2EE:${JSON.stringify(encrypted)}`;
+      sendMessage(to, encryptedPayload);
+    } catch (err) {
+      console.error('[E2EE] Encryption failed, sending unencrypted:', err);
+      sendMessage(to, content);
+    }
+  }, [e2eeReady, ensureSession, encryptMessage, sendMessage]);
+
+  const handleSendImage = useCallback(async (to: string, imageData: string) => {
+    // For now, images are not encrypted (placeholder for future implementation)
+    sendImage(to, imageData);
+  }, [sendImage]);
+
   if (!currentUser) {
     return <Login onLogin={handleLogin} onRegister={handleRegister} />;
   }
@@ -308,8 +358,8 @@ function App() {
         e2eeError={e2eeError}
         sessionStates={sessionStates}
         onEnsureSession={ensureSession}
-        onSendMessage={sendMessage}
-        onSendImage={sendImage}
+        onSendMessage={handleSendMessage}
+        onSendImage={handleSendImage}
         onTyping={sendTyping}
         onMarkAsRead={handleMarkAsRead}
         onLogout={handleLogout}

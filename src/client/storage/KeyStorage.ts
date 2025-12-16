@@ -109,6 +109,7 @@ export interface SessionRecordRow {
   createdAt: number;
   updatedAt: number;
   lastError?: string;
+  ratchetState?: string;
 }
 
 export interface StoredSessionRecord {
@@ -128,6 +129,7 @@ export interface StoredSessionRecord {
   createdAt: number;
   updatedAt: number;
   lastError?: string;
+  ratchetState?: string;
 }
 
 export interface SessionRecordInput {
@@ -147,6 +149,7 @@ export interface SessionRecordInput {
   createdAt: number;
   updatedAt: number;
   lastError?: string;
+  ratchetState?: string;
 }
 
 export class KeyStorage {
@@ -381,6 +384,7 @@ export class KeyStorage {
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
       lastError: record.lastError,
+      ratchetState: record.ratchetState,
     };
     await db.put('sessions', row, storageKey);
   }
@@ -406,6 +410,18 @@ export class KeyStorage {
     await tx.done;
 
     return Promise.all(rows.map((row) => this.mapSessionRow(row)));
+  }
+
+  async updateSessionRatchetState(peerId: string, ratchetState: string): Promise<void> {
+    const db = await this.dbPromise;
+    const storageKey = this.getSessionStorageKey(peerId);
+    const row = await db.get('sessions', storageKey);
+    if (!row) {
+      throw new Error(`Session not found for peer: ${peerId}`);
+    }
+    row.ratchetState = ratchetState;
+    row.updatedAt = Date.now();
+    await db.put('sessions', row, storageKey);
   }
 
   async ensureNextPrekeyIdIncrement(count: number): Promise<number> {
@@ -477,6 +493,7 @@ export class KeyStorage {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       lastError: row.lastError,
+      ratchetState: row.ratchetState,
     };
   }
 
