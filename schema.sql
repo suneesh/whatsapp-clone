@@ -126,6 +126,21 @@ CREATE TABLE IF NOT EXISTS group_invite_links (
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+-- Key verification table (for Safety Numbers)
+CREATE TABLE IF NOT EXISTS key_verification (
+  id TEXT PRIMARY KEY,
+  verifier_user_id TEXT NOT NULL,
+  verified_user_id TEXT NOT NULL,
+  verified_fingerprint TEXT NOT NULL,
+  verified_at INTEGER NOT NULL,
+  verification_method TEXT, -- 'manual', 'qr_code'
+  FOREIGN KEY (verifier_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (verified_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE(verifier_user_id, verified_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_key_verification_verifier ON key_verification(verifier_user_id);
+
 -- Indexes for groups
 CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups(owner_id);
 CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);

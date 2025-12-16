@@ -421,6 +421,7 @@ function Chat({
           e2eeInitializing={e2eeInitializing}
           e2eeError={e2eeError}
           sessionState={selectedUser ? sessionStates[selectedUser.id] : undefined}
+          currentUserFingerprint={currentUserFingerprint}
           onEnsureSession={onEnsureSession}
           onSendMessage={onSendMessage}
           onSendImage={onSendImage}

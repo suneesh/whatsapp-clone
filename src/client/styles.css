@@ -1841,6 +1841,228 @@ body {
   font-size: 18px;
 }
 
+/* Fingerprint Verification Styles */
+.fingerprint-btn {
+  padding: 8px 16px;
+  background: #182229;
+  border: 1px solid #2a3942;
+  color: #00a884;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.2s;
+  margin-left: auto;
+}
+
+.fingerprint-btn:hover {
+  background: #202c33;
+}
+
+.verified-badge-inline {
+  margin-left: 8px;
+  font-size: 16px;
+}
+
+.fingerprint-modal {
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.verification-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #2a3942;
+}
+
+.verification-tabs button {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8696a0;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.verification-tabs button.tab-active {
+  color: #00a884;
+  border-bottom-color: #00a884;
+}
+
+.verification-tabs button:hover {
+  color: #e9edef;
+}
+
+.fingerprint-section {
+  margin-bottom: 24px;
+}
+
+.fingerprint-desc {
+  color: #8696a0;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.fingerprint-display {
+  background: #0b141a;
+  border: 1px solid #2a3942;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.fingerprint-code {
+  display: block;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #00a884;
+  line-height: 1.8;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.qr-code-container {
+  text-align: center;
+  margin: 24px 0;
+  padding: 16px;
+  background: #0b141a;
+  border: 1px solid #2a3942;
+  border-radius: 8px;
+}
+
+.qr-code-label {
+  color: #8696a0;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.qr-code {
+  max-width: 200px;
+  margin: 0 auto;
+  border: 4px solid white;
+  border-radius: 8px;
+}
+
+.qr-code-note {
+  color: #8696a0;
+  font-size: 12px;
+  margin-top: 12px;
+}
+
+.verification-status {
+  text-align: center;
+  margin-top: 24px;
+}
+
+.verified-badge {
+  display: inline-block;
+  padding: 12px 24px;
+  background: #00a884;
+  color: white;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.verification-note {
+  color: #8696a0;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.verification-note.warning {
+  color: #ff9800;
+}
+
+.btn-verify,
+.btn-unverify {
+  padding: 12px 32px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-verify {
+  background: #00a884;
+  color: white;
+}
+
+.btn-verify:hover {
+  background: #05a081;
+}
+
+.btn-verify:disabled {
+  background: #3b4a54;
+  cursor: not-allowed;
+}
+
+.btn-unverify {
+  background: transparent;
+  color: #ff5252;
+  border: 1px solid #ff5252;
+}
+
+.btn-unverify:hover {
+  background: rgba(255, 82, 82, 0.1);
+}
+
+.btn-unverify:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fingerprint-loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #8696a0;
+}
+
+.loading-note {
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.security-info {
+  background: #182229;
+  border: 1px solid #2a3942;
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 24px;
+}
+
+.security-info h3 {
+  color: #e9edef;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.security-info p {
+  color: #8696a0;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.security-info ol {
+  color: #8696a0;
+  font-size: 13px;
+  line-height: 1.8;
+  margin-left: 20px;
+}
+
+.security-info li {
+  margin-bottom: 8px;
+}
+
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
   body {

@@ -496,6 +496,124 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
       });
     }
 
+    // Verify encryption key
+    if (path === '/verify-key' && request.method === 'POST') {
+      const userId = await authenticateUser();
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        });
+      }
+
+      const body = await request.json() as {
+        verifiedUserId: string;
+        verifiedFingerprint: string;
+        verificationMethod?: string;
+      };
+
+      if (!body.verifiedUserId || !body.verifiedFingerprint) {
+        return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        });
+      }
+
+      // Check if verification already exists
+      const existing = await env.DB.prepare(
+        'SELECT id FROM key_verification WHERE verifier_user_id = ? AND verified_user_id = ?'
+      ).bind(userId, body.verifiedUserId).first();
+
+      if (existing) {
+        // Update existing verification
+        await env.DB.prepare(
+          `UPDATE key_verification
+           SET verified_fingerprint = ?, verified_at = ?, verification_method = ?
+           WHERE verifier_user_id = ? AND verified_user_id = ?`
+        ).bind(
+          body.verifiedFingerprint,
+          Date.now(),
+          body.verificationMethod || 'manual',
+          userId,
+          body.verifiedUserId
+        ).run();
+      } else {
+        // Create new verification
+        const verificationId = crypto.randomUUID();
+        await env.DB.prepare(
+          `INSERT INTO key_verification
+           (id, verifier_user_id, verified_user_id, verified_fingerprint, verified_at, verification_method)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(
+          verificationId,
+          userId,
+          body.verifiedUserId,
+          body.verifiedFingerprint,
+          Date.now(),
+          body.verificationMethod || 'manual'
+        ).run();
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get verification status
+    if (path.match(/^\/verify-key\/[^\/]+$/) && request.method === 'GET') {
+      const userId = await authenticateUser();
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        });
+      }
+
+      const verifiedUserId = path.split('/')[2];
+
+      const verification = await env.DB.prepare(
+        `SELECT verified_fingerprint, verified_at, verification_method
+         FROM key_verification
+         WHERE verifier_user_id = ? AND verified_user_id = ?`
+      ).bind(userId, verifiedUserId).first();
+
+      if (!verification) {
+        return new Response(JSON.stringify({ verified: false }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({
+        verified: true,
+        fingerprint: verification.verified_fingerprint,
+        verifiedAt: verification.verified_at,
+        method: verification.verification_method,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Remove verification
+    if (path.match(/^\/verify-key\/[^\/]+$/) && request.method === 'DELETE') {
+      const userId = await authenticateUser();
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        });
+      }
+
+      const verifiedUserId = path.split('/')[2];
+
+      await env.DB.prepare(
+        'DELETE FROM key_verification WHERE verifier_user_id = ? AND verified_user_id = ?'
+      ).bind(userId, verifiedUserId).run();
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Admin: Get all users with full details
     if (path === '/admin/users' && request.method === 'GET') {
       const authHeader = request.headers.get('Authorization');

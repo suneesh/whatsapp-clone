@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
+import FingerprintModal from './FingerprintModal';
 import { SessionViewState } from '../hooks/useE2EE';
 
 interface User {
@@ -32,6 +33,7 @@ interface ChatWindowProps {
   e2eeInitializing: boolean;
   e2eeError: string | null;
   sessionState?: SessionViewState;
+  currentUserFingerprint?: string;
   onEnsureSession: (peerId: string) => Promise<void>;
   onSendMessage: (to: string, content: string) => void;
   onSendImage: (to: string, imageData: string) => void;
@@ -49,6 +51,7 @@ function ChatWindow({
   e2eeInitializing,
   e2eeError,
   sessionState,
+  currentUserFingerprint,
   onEnsureSession,
   onSendMessage,
   onSendImage,
@@ -56,6 +59,7 @@ function ChatWindow({
   onMarkAsRead,
 }: ChatWindowProps) {
   const [inputValue, setInputValue] = useState('');
+  const [showFingerprintModal, setShowFingerprintModal] = useState(false);
   const typingTimeoutRef = useRef<number>();
 
   useEffect(() => {
@@ -185,11 +189,25 @@ function ChatWindow({
       <div className="chat-header">
         <div className="user-avatar">{selectedUser.username.charAt(0).toUpperCase()}</div>
         <div className="user-details">
-          <div className="user-name">{selectedUser.username}</div>
+          <div className="user-name">
+            {selectedUser.username}
+            {sessionReady && sessionState?.fingerprint && (
+              <span className="verified-badge-inline" title="Encrypted">🔒</span>
+            )}
+          </div>
           <div className={`user-status ${selectedUser.online ? 'online' : ''}`}>
             {selectedUser.online ? 'online' : 'offline'}
           </div>
         </div>
+        {sessionReady && sessionState?.fingerprint && (
+          <button
+            className="fingerprint-btn"
+            onClick={() => setShowFingerprintModal(true)}
+            title="Verify encryption"
+          >
+            🔑 Verify
+          </button>
+        )}
       </div>
 
       <MessageList
@@ -211,6 +229,17 @@ function ChatWindow({
         disabled={inputDisabled}
         canSendImages={currentUser.can_send_images !== 0}
       />
+
+      {showFingerprintModal && currentUserFingerprint && sessionState?.fingerprint && (
+        <FingerprintModal
+          currentUserId={currentUser.id}
+          currentUserFingerprint={currentUserFingerprint}
+          otherUserId={selectedUser.id}
+          otherUserFingerprint={sessionState.fingerprint}
+          otherUsername={selectedUser.username}
+          onClose={() => setShowFingerprintModal(false)}
+        />
+      )}
     </div>
   );
 }
