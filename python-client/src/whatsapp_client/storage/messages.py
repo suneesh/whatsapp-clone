@@ -152,6 +152,45 @@ class MessageStorage:
         finally:
             conn.close()
     
+    def get_message_by_id(self, message_id: str) -> Optional[Message]:
+        """
+        Get a single message by ID.
+        
+        Args:
+            message_id: Message ID
+            
+        Returns:
+            Message object or None if not found
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(
+                "SELECT * FROM messages WHERE id = ?",
+                (message_id,)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                return Message(
+                    id=row["id"],
+                    from_user=row["from_user"],
+                    to=row["to_user"],
+                    content=row["content"],
+                    type=row["type"],
+                    timestamp=row["timestamp"],
+                    status=row["status"],
+                )
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get message: {e}")
+            return None
+        finally:
+            conn.close()
+    
     def get_messages(
         self,
         peer_id: str,

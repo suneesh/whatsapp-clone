@@ -719,6 +719,61 @@ class WhatsAppClient:
         if self._ws:
             await self._ws.send_typing(to, typing)
     
+    async def mark_as_read(
+        self, 
+        peer_id: str, 
+        message_ids: List[str]
+    ) -> None:
+        """
+        Mark messages as read and send read receipts.
+        
+        Args:
+            peer_id: User ID of the conversation peer
+            message_ids: List of message IDs to mark as read (max 100)
+            
+        Raises:
+            ValueError: If message_ids list is empty or too large
+            
+        Example:
+            >>> @client.on_message
+            >>> async def handle_message(message):
+            ...     await client.mark_as_read(
+            ...         peer_id=message.from_user,
+            ...         message_ids=[message.id]
+            ...     )
+        """
+        if not message_ids:
+            raise ValueError("message_ids cannot be empty")
+        
+        if len(message_ids) > 100:
+            raise ValueError("Cannot mark more than 100 messages at once")
+        
+        # Update local storage
+        if self._message_storage:
+            for message_id in message_ids:
+                self._message_storage.update_message_status(message_id, "read")
+        
+        # Send read receipts via WebSocket
+        if self._ws:
+            for message_id in message_ids:
+                await self._ws.send_status_update(message_id, "read")
+    
+    def on_message_status(self, handler: Callable) -> Callable:
+        """
+        Register handler for message status updates.
+        
+        This is an alias for on_status() for better API clarity.
+        
+        Args:
+            handler: Async function to handle status updates
+            
+        Example:
+            >>> @client.on_message_status
+            >>> async def handle_status(data):
+            ...     print(f"Message {data['messageId']}: {data['status']}")
+        """
+        return self.on_status(handler)
+    
     def get_online_users(self) -> List[str]:
         """
         Get list of currently online users.
