@@ -19,12 +19,12 @@ This document breaks down the End-to-End Encryption feature into individual user
 **So that** my messages can be encrypted without any manual setup
 
 ### Acceptance Criteria
-- [ ] When I first log in, the system automatically generates my identity key pair
-- [ ] The system generates and maintains prekeys for secure session establishment
-- [ ] All private keys are stored securely in my browser's local storage
-- [ ] Public keys are automatically uploaded to the server
-- [ ] I can see my encryption key fingerprint in my profile settings
-- [ ] The system automatically rotates prekeys when they are consumed
+- [x] When I first log in, the system automatically generates my identity key pair
+- [x] The system generates and maintains prekeys for secure session establishment
+- [x] All private keys are stored securely in my browser's local storage
+- [x] Public keys are automatically uploaded to the server
+- [x] I can see my encryption key fingerprint in my profile settings
+- [x] The system automatically rotates prekeys when they are consumed
 
 ### Technical Requirements
 - Generate Curve25519 identity key pair using Web Crypto API
@@ -35,12 +35,12 @@ This document breaks down the End-to-End Encryption feature into individual user
 - Display 60-character fingerprint in settings
 
 ### Definition of Done
-- Keys are generated on first login
-- Keys persist across browser sessions
-- Public keys are successfully uploaded to server
-- Fingerprint is visible in UI
-- Unit tests for key generation pass
-- Integration test for full key lifecycle passes
+- [x] Keys are generated on first login
+- [x] Keys persist across browser sessions
+- [x] Public keys are successfully uploaded to server
+- [x] Fingerprint is visible in UI
+- [ ] Unit tests for key generation pass
+- [ ] Integration test for full key lifecycle passes
 
 ---
 

@@ -43,6 +43,22 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
   const url = new URL(request.url);
   const path = url.pathname.replace('/api', '');
 
+  const authenticateUser = async (): Promise<string | null> => {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return null;
+    }
+    const userId = authHeader.replace('Bearer ', '').trim();
+    if (!userId) {
+      return null;
+    }
+    const user = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
+    if (!user) {
+      return null;
+    }
+    return userId;
+  };
+
   try {
     // Get all users
     if (path === '/users' && request.method === 'GET') {
@@ -271,6 +287,212 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
+      });
+    }
+
+    // Upload identity + prekey bundle
+    if (path === '/users/prekeys' && request.method === 'POST') {
+      const userId = await authenticateUser();
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        });
+      }
+
+      const body = await request.json() as {
+        identityKey: string;
+        signingKey: string;
+        fingerprint: string;
+        signedPrekey: { keyId: number; publicKey: string; signature: string } | null;
+        oneTimePrekeys?: Array<{ keyId: number; publicKey: string }>;
+      };
+
+      const oneTimePrekeys = Array.isArray(body.oneTimePrekeys) ? body.oneTimePrekeys : [];
+
+      if (!body.identityKey || !body.signingKey || !body.fingerprint) {
+        return new Response(JSON.stringify({ error: 'Missing identity material' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        });
+      }
+
+      if (!body.signedPrekey && oneTimePrekeys.length === 0) {
+        return new Response(JSON.stringify({ error: 'No prekeys provided' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        });
+      }
+
+      if (oneTimePrekeys.length > 200) {
+        return new Response(JSON.stringify({ error: 'Too many one-time prekeys (max 200)' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        });
+      }
+
+      const now = Date.now();
+
+      await env.DB.prepare(
+        `INSERT INTO user_identity_keys (user_id, identity_key, signing_key, fingerprint, created_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           identity_key = excluded.identity_key,
+           signing_key = excluded.signing_key,
+           fingerprint = excluded.fingerprint,
+           created_at = excluded.created_at`
+      ).bind(userId, body.identityKey, body.signingKey, body.fingerprint, now).run();
+
+      if (body.signedPrekey) {
+        await env.DB.prepare(
+          `INSERT INTO user_prekeys (id, user_id, key_id, prekey_type, public_key, signature, created_at, is_used)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+           ON CONFLICT(user_id, key_id, prekey_type) DO UPDATE SET
+             public_key = excluded.public_key,
+             signature = excluded.signature,
+             created_at = excluded.created_at,
+             is_used = 0,
+             used_at = NULL`
+        ).bind(
+          crypto.randomUUID(),
+          userId,
+          body.signedPrekey.keyId,
+          'signed',
+          body.signedPrekey.publicKey,
+          body.signedPrekey.signature,
+          now
+        ).run();
+      }
+
+      if (oneTimePrekeys.length > 0) {
+        const statements = oneTimePrekeys.map((prekey) =>
+          env.DB.prepare(
+            `INSERT INTO user_prekeys (id, user_id, key_id, prekey_type, public_key, created_at, is_used)
+             VALUES (?, ?, ?, ?, ?, ?, 0)
+             ON CONFLICT(user_id, key_id, prekey_type) DO UPDATE SET
+               public_key = excluded.public_key,
+               created_at = excluded.created_at,
+               is_used = 0,
+               used_at = NULL`
+          ).bind(
+            crypto.randomUUID(),
+            userId,
+            prekey.keyId,
+            'one_time',
+            prekey.publicKey,
+            now
+          )
+        );
+        await env.DB.batch(statements);
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        signedPrekeyUploaded: Boolean(body.signedPrekey),
+        oneTimePrekeysUploaded: oneTimePrekeys.length,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get summary of server-side prekey availability for current user
+    if (path === '/users/prekeys/status' && request.method === 'GET') {
+      const userId = await authenticateUser();
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        });
+      }
+
+      const signedPrekeyRow = await env.DB.prepare(
+        `SELECT key_id, created_at
+         FROM user_prekeys
+         WHERE user_id = ? AND prekey_type = ?
+         ORDER BY created_at DESC
+         LIMIT 1`
+      ).bind(userId, 'signed').first();
+
+      const oneTimeCountRow = await env.DB.prepare(
+        `SELECT COUNT(*) as count
+         FROM user_prekeys
+         WHERE user_id = ? AND prekey_type = ? AND is_used = 0`
+      ).bind(userId, 'one_time').first();
+
+      return new Response(JSON.stringify({
+        signedPrekeyKeyId: signedPrekeyRow ? signedPrekeyRow.key_id : null,
+        signedPrekeyCreatedAt: signedPrekeyRow ? signedPrekeyRow.created_at : null,
+        oneTimePrekeyCount: oneTimeCountRow ? Number(oneTimeCountRow.count) : 0,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Fetch recipient prekey bundle
+    if (path.match(/^\/users\/[^\/]+\/prekeys$/) && request.method === 'GET') {
+      const requesterId = await authenticateUser();
+      if (!requesterId) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        });
+      }
+
+      const targetUserId = path.split('/')[2];
+
+      const identity = await env.DB.prepare(
+        'SELECT identity_key, signing_key, fingerprint FROM user_identity_keys WHERE user_id = ?'
+      ).bind(targetUserId).first();
+
+      if (!identity) {
+        return new Response(JSON.stringify({ error: 'Key material not found' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 404,
+        });
+      }
+
+      const signedPrekey = await env.DB.prepare(
+        `SELECT key_id, public_key, signature, created_at
+         FROM user_prekeys
+         WHERE user_id = ? AND prekey_type = ?
+         ORDER BY created_at DESC
+         LIMIT 1`
+      ).bind(targetUserId, 'signed').first();
+
+      const oneTimePrekey = await env.DB.prepare(
+        `SELECT id, key_id, public_key
+         FROM user_prekeys
+         WHERE user_id = ? AND prekey_type = ? AND is_used = 0
+         ORDER BY created_at ASC
+         LIMIT 1`
+      ).bind(targetUserId, 'one_time').first();
+
+      if (oneTimePrekey) {
+        await env.DB.prepare(
+          'UPDATE user_prekeys SET is_used = 1, used_at = ? WHERE id = ?'
+        ).bind(Date.now(), oneTimePrekey.id).run();
+      }
+
+      return new Response(JSON.stringify({
+        identityKey: identity.identity_key,
+        signingKey: identity.signing_key,
+        fingerprint: identity.fingerprint,
+        signedPrekey: signedPrekey
+          ? {
+              keyId: signedPrekey.key_id,
+              publicKey: signedPrekey.public_key,
+              signature: signedPrekey.signature,
+              createdAt: signedPrekey.created_at,
+            }
+          : null,
+        oneTimePrekey: oneTimePrekey
+          ? {
+              keyId: oneTimePrekey.key_id,
+              publicKey: oneTimePrekey.public_key,
+            }
+          : null,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 

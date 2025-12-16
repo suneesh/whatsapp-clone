@@ -153,6 +153,29 @@ body {
   margin-top: 5px;
 }
 
+.fingerprint-block {
+  margin-top: 12px;
+  padding: 10px;
+  background: #0b141a;
+  border: 1px solid #2a3942;
+  border-radius: 8px;
+}
+
+.fingerprint-label {
+  font-size: 11px;
+  color: #8696a0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.fingerprint-value {
+  color: #e9edef;
+  font-size: 12px;
+  word-break: break-all;
+  display: block;
+}
+
 .logout-btn {
   padding: 8px 16px;
   background: #2a3942;
@@ -265,6 +288,45 @@ body {
 
 .chat-header .user-name {
   font-size: 18px;
+}
+
+.session-status-banner {
+  padding: 10px 20px;
+  border-bottom: 1px solid #2a3942;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.session-status-banner.info {
+  background: #202c33;
+  color: #e9edef;
+}
+
+.session-status-banner.warning {
+  background: #2a3942;
+  color: #f1c27d;
+}
+
+.session-status-banner.danger {
+  background: #4a1f1f;
+  color: #f28b82;
+}
+
+.session-retry-btn {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 16px;
+  padding: 4px 12px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.session-retry-btn:hover {
+  background: rgba(0, 0, 0, 0.15);
 }
 
 .empty-chat {

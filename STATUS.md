@@ -33,6 +33,20 @@
 - ⌨️ Typing indicators (start typing to see)
 - ✓ Message delivery status (sent/delivered)
 - 💬 Message persistence (refresh page, messages are saved)
+- 🔐 E2EE keys auto-generate on login (US1)
+    - Fingerprint now visible in the sidebar
+    - Identity + prekeys upload automatically
+    - Server exposes `/api/users/prekeys`, `/api/users/prekeys/status`, and `/api/users/:id/prekeys`
+
+### Database Migration (new)
+
+Run the latest migration to create `user_identity_keys` and `user_prekeys` tables:
+
+```bash
+wrangler d1 migrations apply whatsapp_clone_db
+```
+
+If you are targeting a remote environment add `--remote` to the command.
 
 ## Stop the Servers
 

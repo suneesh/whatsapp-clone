@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
+import { SessionViewState } from '../hooks/useE2EE';
 
 interface User {
   id: string;
@@ -27,6 +28,10 @@ interface ChatWindowProps {
   messages: Message[];
   typingUsers: Set<string>;
   connected: boolean;
+  e2eeReady: boolean;
+  e2eeError: string | null;
+  sessionState?: SessionViewState;
+  onEnsureSession: (peerId: string) => Promise<void>;
   onSendMessage: (to: string, content: string) => void;
   onSendImage: (to: string, imageData: string) => void;
   onTyping: (to: string, typing: boolean) => void;
@@ -39,6 +44,10 @@ function ChatWindow({
   messages,
   typingUsers,
   connected,
+  e2eeReady,
+  e2eeError,
+  sessionState,
+  onEnsureSession,
   onSendMessage,
   onSendImage,
   onTyping,
@@ -72,7 +81,14 @@ function ChatWindow({
   };
 
   const handleSend = () => {
-    if (inputValue.trim() && selectedUser) {
+    if (!selectedUser) {
+      return;
+    }
+    const sessionReady = sessionState?.status === 'ready';
+    if (!sessionReady || !e2eeReady) {
+      return;
+    }
+    if (inputValue.trim()) {
       onSendMessage(selectedUser.id, inputValue.trim());
       setInputValue('');
       onTyping(selectedUser.id, false);
@@ -80,9 +96,18 @@ function ChatWindow({
   };
 
   const handleSendImage = (imageData: string) => {
-    if (selectedUser) {
+    if (selectedUser && sessionState?.status === 'ready' && e2eeReady) {
       onSendImage(selectedUser.id, imageData);
     }
+  };
+
+  const handleRetrySession = () => {
+    if (!selectedUser) {
+      return;
+    }
+    onEnsureSession(selectedUser.id).catch((err) => {
+      console.warn('[ChatWindow] Session retry failed', err);
+    });
   };
 
   if (!selectedUser) {
@@ -100,6 +125,46 @@ function ChatWindow({
   );
 
   const isTyping = typingUsers.has(selectedUser.id);
+  const sessionStatus = sessionState?.status || 'idle';
+  const sessionError = sessionState?.error || e2eeError;
+  const sessionReady = sessionStatus === 'ready';
+  const sessionEstablishing = sessionStatus === 'establishing';
+  const inputDisabled = !connected || !sessionReady || !e2eeReady;
+
+  const renderSessionBanner = () => {
+    if (!e2eeReady) {
+      return (
+        <div className="session-status-banner warning">
+          <span>Generating secure identity…</span>
+        </div>
+      );
+    }
+    if (sessionEstablishing) {
+      return (
+        <div className="session-status-banner info">
+          <span>Establishing secure session…</span>
+        </div>
+      );
+    }
+    if (sessionStatus === 'error') {
+      return (
+        <div className="session-status-banner danger">
+          <span>{sessionError || 'Secure session failed'}</span>
+          <button type="button" onClick={handleRetrySession} className="session-retry-btn">
+            Retry
+          </button>
+        </div>
+      );
+    }
+    if (!sessionReady) {
+      return (
+        <div className="session-status-banner warning">
+          <span>Secure session required before sending messages.</span>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="chat-container">
@@ -122,12 +187,14 @@ function ChatWindow({
         onMarkAsRead={(messageIds) => onMarkAsRead(selectedUser.id, messageIds)}
       />
 
+      {renderSessionBanner()}
+
       <MessageInput
         value={inputValue}
         onChange={handleInputChange}
         onSend={handleSend}
         onSendImage={handleSendImage}
-        disabled={!connected}
+        disabled={inputDisabled}
         canSendImages={currentUser.can_send_images !== 0}
       />
     </div>

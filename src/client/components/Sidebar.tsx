@@ -14,15 +14,30 @@ interface SidebarProps {
   onLogout: () => void;
   onOpenAdmin?: () => void;
   unreadCounts?: Map<string, number>;
+  fingerprint?: string;
 }
 
-function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout, onOpenAdmin, unreadCounts }: SidebarProps) {
+function formatFingerprint(value: string): string {
+  return value
+    .replace(/\s+/g, '')
+    .match(/.{1,4}/g)
+    ?.join(' ')
+    .trim() ?? value;
+}
+
+function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout, onOpenAdmin, unreadCounts, fingerprint }: SidebarProps) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <div>
           <h2>Chats</h2>
           <div className="user-info">{currentUser.username}</div>
+          {fingerprint && (
+            <div className="fingerprint-block">
+              <div className="fingerprint-label">Fingerprint</div>
+              <code className="fingerprint-value">{formatFingerprint(fingerprint)}</code>
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {currentUser.role === 'admin' && onOpenAdmin && (

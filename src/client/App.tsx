@@ -3,6 +3,7 @@ import Login from './components/Login';
 import Chat from './components/Chat';
 import AdminDashboard from './components/AdminDashboard';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useE2EE } from './hooks/useE2EE';
 import { apiFetch } from './utils/api';
 
 interface User {
@@ -38,6 +39,13 @@ function App() {
   const [groupMessages, setGroupMessages] = useState<any[]>([]);
   const [groupTypingUsers, setGroupTypingUsers] = useState<Map<string, Set<string>>>(new Map());
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const {
+    ready: e2eeReady,
+    fingerprint: currentUserFingerprint,
+    error: e2eeError,
+    ensureSession,
+    sessions: sessionStates,
+  } = useE2EE(currentUser?.id);
 
   // Restore user from localStorage on app mount
   useEffect(() => {
@@ -293,6 +301,11 @@ function App() {
         messages={messages}
         typingUsers={typingUsers}
         connected={connected}
+        currentUserFingerprint={currentUserFingerprint || undefined}
+        e2eeReady={e2eeReady}
+        e2eeError={e2eeError}
+        sessionStates={sessionStates}
+        onEnsureSession={ensureSession}
         onSendMessage={sendMessage}
         onSendImage={sendImage}
         onTyping={sendTyping}

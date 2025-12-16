@@ -4,6 +4,7 @@ import ChatWindow from './ChatWindow';
 import GroupChatWindow from './GroupChatWindow';
 import GroupList from './GroupList';
 import CreateGroupModal from './CreateGroupModal';
+import { SessionViewState } from '../hooks/useE2EE';
 
 interface User {
   id: string;
@@ -42,6 +43,11 @@ interface ChatProps {
   messages: Message[];
   typingUsers: Set<string>;
   connected: boolean;
+  currentUserFingerprint?: string;
+  e2eeReady: boolean;
+  e2eeError: string | null;
+  sessionStates: Record<string, SessionViewState>;
+  onEnsureSession: (peerId: string) => Promise<void>;
   onSendMessage: (to: string, content: string) => void;
   onSendImage: (to: string, imageData: string) => void;
   onTyping: (to: string, typing: boolean) => void;
@@ -62,6 +68,10 @@ function Chat({
   messages,
   typingUsers,
   connected,
+  e2eeReady,
+  e2eeError,
+  sessionStates,
+  onEnsureSession,
   onSendMessage,
   onSendImage,
   onTyping,
@@ -70,6 +80,7 @@ function Chat({
   onOpenAdmin,
   groupMessages,
   groupTypingUsers,
+  currentUserFingerprint,
   onSendGroupMessage,
   onSendGroupImage,
   onGroupTyping,
@@ -82,6 +93,21 @@ function Chat({
   const [groupMembers, setGroupMembers] = useState<any[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [sidebarVisible, setSidebarVisible] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedUser || !e2eeReady) {
+      return;
+    }
+    onEnsureSession(selectedUser.id).catch((err) => {
+      if (!cancelled) {
+        console.warn('[Chat] Failed to establish session', err);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUser, e2eeReady, onEnsureSession]);
 
   // Fetch groups when component mounts or view changes to groups
   useEffect(() => {
@@ -368,6 +394,7 @@ function Chat({
             onLogout={onLogout}
             onOpenAdmin={onOpenAdmin}
             unreadCounts={unreadCounts}
+            fingerprint={currentUserFingerprint}
           />
         ) : (
           <GroupList
@@ -388,6 +415,10 @@ function Chat({
           messages={messages}
           typingUsers={typingUsers}
           connected={connected}
+          e2eeReady={e2eeReady}
+          e2eeError={e2eeError}
+          sessionState={selectedUser ? sessionStates[selectedUser.id] : undefined}
+          onEnsureSession={onEnsureSession}
           onSendMessage={onSendMessage}
           onSendImage={onSendImage}
           onTyping={onTyping}
