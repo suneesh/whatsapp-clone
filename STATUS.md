@@ -14,22 +14,22 @@
 
 ## Python Client Development Progress
 
-### Completed User Stories (42/105 story points - 40%)
+### Completed User Stories (52/105 story points - 50%)
 
-#### ✅ US1: Client Initialization and Authentication (8 pts)
+#### ✅ US1: Client Initialization and Authentication (2 pts)
 - Client initialization with server URL and storage path
 - Login/logout functionality with server authentication
 - Key generation and upload on login
 - 9/9 tests passing
 
-#### ✅ US2: Cryptographic Key Generation (5 pts)
+#### ✅ US2: Cryptographic Key Generation (13 pts)
 - X25519 identity key pair generation
 - Ed25519 signed prekey with signature
 - One-time prekey bundle generation (100 keys)
 - Key persistence and fingerprint generation
 - 8/8 tests passing
 
-#### ✅ US3: Session Establishment (X3DH) (8 pts)
+#### ✅ US3: Session Establishment (X3DH) (13 pts)
 - X3DH protocol implementation
 - Prekey bundle retrieval from server
 - Shared secret calculation with DH operations
@@ -46,45 +46,70 @@
 - DoS protection with max skipped keys
 - 15/15 tests passing (shared with US5)
 
-#### ✅ US5: Message Decryption (8 pts)
+#### ✅ US5: Message Decryption (13 pts)
 - Message decryption with Double Ratchet
 - Skipped message key storage and retrieval
 - DH ratchet on receiving new keys
 - Session state persistence
 - 15/15 tests passing (shared with US4)
 
+#### ✅ US6: Send/Receive Messages (5 pts)
+- Real-time WebSocket communication
+- Message sending and receiving
+- SQLite message persistence
+- Message history retrieval
+- Full-text message search
+- Conversation management
+- 17/17 tests passing
+
+#### ✅ US7: WebSocket Connection Management (5 pts)
+- Auto-connect on login
+- Exponential backoff reconnection
+- Connection state tracking
+- Event-driven message routing
+- Integrated with US6
+
+#### ✅ US8: Typing Indicators and Presence (2 pts)
+- Send/receive typing indicators
+- Online presence tracking
+- Query methods (get_online_users, is_user_online)
+- Event handlers for typing and presence
+- 16/16 tests passing
+
 ### Implementation Summary
 
-**Total Tests**: 50/50 passing (100%)
+**Total Tests**: 83/83 passing (100%)
 - Authentication: 9 tests
 - Cryptography: 8 tests  
 - Models: 4 tests
 - Sessions (X3DH): 14 tests
 - Ratchet (Encryption/Decryption): 15 tests
+- Messaging (WebSocket): 17 tests
+- Presence & Typing: 16 tests
 
 **Files Created**:
 - `python-client/src/whatsapp_client/client.py` - Main client API
 - `python-client/src/whatsapp_client/crypto/keys.py` - Key generation
 - `python-client/src/whatsapp_client/crypto/session_manager.py` - X3DH & sessions
 - `python-client/src/whatsapp_client/crypto/ratchet.py` - Double Ratchet algorithm
+- `python-client/src/whatsapp_client/transport/websocket.py` - WebSocket client
+- `python-client/src/whatsapp_client/storage/messages.py` - Message storage
 - `python-client/src/whatsapp_client/models.py` - Data models
 - `python-client/src/whatsapp_client/exceptions.py` - Custom exceptions
 - `python-client/tests/*` - Comprehensive test suite
 
-### Remaining User Stories (63/105 story points)
+### Remaining User Stories (53/105 story points)
 
-- US6: Send/Receive Messages (8 pts) - WebSocket integration
-- US7: Contact Management (5 pts)
-- US8: Group Chat (13 pts)
-- US9: Media Messages (8 pts)
-- US10: Typing Indicators (3 pts)
-- US11: Read Receipts (5 pts)
-- US12: Online Presence (5 pts)
-- US13: User Profile (3 pts)
-- US14: Search (5 pts)
-- US15: Notifications (3 pts)
-- US16: Message History (3 pts)
-- US17: Error Handling (2 pts)
+- US9: Message Status Tracking and Read Receipts (3 pts)
+- US10: Image and File Sending (5 pts)
+- US11: Key Fingerprint Verification (5 pts)
+- US12: Group Chat Support (5 pts)
+- US13: Local Storage and Persistence (5 pts)
+- US14: Error Handling and Logging (3 pts)
+- US15: Configuration and Customization (2 pts)
+- US16: Async Event Loop Integration (3 pts)
+- US17: Testing and Examples (5 pts)
+- US18: Package Distribution (3 pts)
 
 ## Features Available
 
@@ -100,8 +125,11 @@
 - ✅ Complete E2EE implementation (X3DH + Double Ratchet)
 - ✅ Authentication and session management
 - ✅ Message encryption/decryption
-- ⏳ Real-time messaging (WebSocket) - Next up
-- ⏳ Contact management
+- ✅ Real-time messaging (WebSocket)
+- ✅ Message persistence and search
+- ✅ Typing indicators and presence tracking
+- ⏳ Message status tracking (read receipts)
+- ⏳ Image and file sending
 - ⏳ Group chat support
 
 ## How to Test
