@@ -70,6 +70,7 @@ class WhatsAppClient:
         self._typing_handlers: List[Callable] = []
         self._status_handlers: List[Callable] = []
         self._presence_handlers: List[Callable] = []
+        self._online_users: Dict[str, bool] = {}  # Track online presence
 
     @property
     def user(self) -> Optional[User]:
@@ -544,6 +545,14 @@ class WhatsAppClient:
     
     async def _handle_presence(self, data: Dict[str, Any]) -> None:
         """Handle presence update."""
+        # Update presence tracking
+        user_id = data.get("userId")
+        online = data.get("online", False)
+        
+        if user_id:
+            self._online_users[user_id] = online
+        
+        # Notify handlers
         for handler in self._presence_handlers:
             try:
                 await handler(data)
@@ -709,6 +718,49 @@ class WhatsAppClient:
         """
         if self._ws:
             await self._ws.send_typing(to, typing)
+    
+    def get_online_users(self) -> List[str]:
+        """
+        Get list of currently online users.
+        
+        Returns:
+            List of user IDs that are currently online
+            
+        Example:
+            >>> online = client.get_online_users()
+            >>> print(f"Online users: {len(online)}")
+        """
+        return [user_id for user_id, online in self._online_users.items() if online]
+    
+    def is_user_online(self, user_id: str) -> bool:
+        """
+        Check if a specific user is online.
+        
+        Args:
+            user_id: User ID to check
+            
+        Returns:
+            True if user is online, False otherwise
+            
+        Example:
+            >>> if client.is_user_online("user_123"):
+            ...     print("User is online!")
+        """
+        return self._online_users.get(user_id, False)
+    
+    def get_all_presence(self) -> Dict[str, bool]:
+        """
+        Get presence status for all tracked users.
+        
+        Returns:
+            Dictionary mapping user IDs to online status
+            
+        Example:
+            >>> presence = client.get_all_presence()
+            >>> for user_id, online in presence.items():
+            ...     print(f"{user_id}: {'online' if online else 'offline'}")
+        """
+        return self._online_users.copy()
 
     async def logout(self) -> None:
         """
@@ -727,6 +779,7 @@ class WhatsAppClient:
         self._key_manager = None
         self._session_manager = None
         self._message_storage = None
+        self._online_users.clear()  # Clear presence tracking
         logger.info("Logged out successfully")
 
     async def close(self) -> None:
