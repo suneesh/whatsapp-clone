@@ -41,6 +41,7 @@ function App() {
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const {
     ready: e2eeReady,
+    initializing: e2eeInitializing,
     fingerprint: currentUserFingerprint,
     error: e2eeError,
     ensureSession,
@@ -303,6 +304,7 @@ function App() {
         connected={connected}
         currentUserFingerprint={currentUserFingerprint || undefined}
         e2eeReady={e2eeReady}
+        e2eeInitializing={e2eeInitializing}
         e2eeError={e2eeError}
         sessionStates={sessionStates}
         onEnsureSession={ensureSession}

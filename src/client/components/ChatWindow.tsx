@@ -29,6 +29,7 @@ interface ChatWindowProps {
   typingUsers: Set<string>;
   connected: boolean;
   e2eeReady: boolean;
+  e2eeInitializing: boolean;
   e2eeError: string | null;
   sessionState?: SessionViewState;
   onEnsureSession: (peerId: string) => Promise<void>;
@@ -45,6 +46,7 @@ function ChatWindow({
   typingUsers,
   connected,
   e2eeReady,
+  e2eeInitializing,
   e2eeError,
   sessionState,
   onEnsureSession,
@@ -132,13 +134,25 @@ function ChatWindow({
   const inputDisabled = !connected || !sessionReady || !e2eeReady;
 
   const renderSessionBanner = () => {
-    if (!e2eeReady) {
+    if (e2eeError) {
+      return (
+        <div className="session-status-banner danger">
+          <span>{e2eeError}</span>
+          <button type="button" onClick={() => window.location.reload()} className="session-retry-btn">
+            Reload
+          </button>
+        </div>
+      );
+    }
+
+    if (e2eeInitializing || !e2eeReady) {
       return (
         <div className="session-status-banner warning">
           <span>Generating secure identity…</span>
         </div>
       );
     }
+
     if (sessionEstablishing) {
       return (
         <div className="session-status-banner info">

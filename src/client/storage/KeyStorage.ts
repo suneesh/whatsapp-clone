@@ -306,24 +306,31 @@ export class KeyStorage {
 
   async getPendingOneTimePrekeys(limit: number): Promise<StoredOneTimePrekeyRecord[]> {
     const db = await this.dbPromise;
-    const results: StoredOneTimePrekeyRecord[] = [];
-    let cursor = await db.transaction('one_time_prekeys').store.openCursor();
-    while (cursor && results.length < limit) {
+    const tx = db.transaction('one_time_prekeys');
+    const rows: OneTimePrekeyRecordRow[] = [];
+    let cursor = await tx.store.openCursor();
+    while (cursor && rows.length < limit) {
       const value = cursor.value as OneTimePrekeyRecordRow;
       if (!value.uploaded) {
+        rows.push(value);
+      }
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+
+    return Promise.all(
+      rows.map(async (value) => {
         const secretKey = await this.decrypt(value.encryptedSecretKey);
-        results.push({
+        return {
           keyId: value.keyId,
           publicKey: fromBase64(value.publicKey),
           secretKey,
           createdAt: value.createdAt,
           uploaded: value.uploaded,
           consumed: value.consumed,
-        });
-      }
-      cursor = await cursor.continue();
-    }
-    return results;
+        };
+      })
+    );
   }
 
   async markOneTimePrekeysUploaded(keyIds: number[]): Promise<void> {
@@ -389,14 +396,16 @@ export class KeyStorage {
 
   async listSessions(): Promise<StoredSessionRecord[]> {
     const db = await this.dbPromise;
-    const results: StoredSessionRecord[] = [];
-    let cursor = await db.transaction('sessions').store.openCursor();
+    const tx = db.transaction('sessions');
+    const rows: SessionRecordRow[] = [];
+    let cursor = await tx.store.openCursor();
     while (cursor) {
-      const row = cursor.value as SessionRecordRow;
-      results.push(await this.mapSessionRow(row));
+      rows.push(cursor.value as SessionRecordRow);
       cursor = await cursor.continue();
     }
-    return results;
+    await tx.done;
+
+    return Promise.all(rows.map((row) => this.mapSessionRow(row)));
   }
 
   async ensureNextPrekeyIdIncrement(count: number): Promise<number> {

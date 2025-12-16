@@ -45,6 +45,7 @@ interface ChatProps {
   connected: boolean;
   currentUserFingerprint?: string;
   e2eeReady: boolean;
+  e2eeInitializing: boolean;
   e2eeError: string | null;
   sessionStates: Record<string, SessionViewState>;
   onEnsureSession: (peerId: string) => Promise<void>;
@@ -69,6 +70,7 @@ function Chat({
   typingUsers,
   connected,
   e2eeReady,
+  e2eeInitializing,
   e2eeError,
   sessionStates,
   onEnsureSession,
@@ -416,6 +418,7 @@ function Chat({
           typingUsers={typingUsers}
           connected={connected}
           e2eeReady={e2eeReady}
+          e2eeInitializing={e2eeInitializing}
           e2eeError={e2eeError}
           sessionState={selectedUser ? sessionStates[selectedUser.id] : undefined}
           onEnsureSession={onEnsureSession}
