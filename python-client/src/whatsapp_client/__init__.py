@@ -6,7 +6,7 @@ Enables developers to build bots, automation tools, and integrations.
 """
 
 from .client import WhatsAppClient
-from .models import User, Message
+from .models import User, Message, PrekeyBundle, Session
 from .exceptions import (
     WhatsAppClientError,
     AuthenticationError,
@@ -19,6 +19,8 @@ __all__ = [
     "WhatsAppClient",
     "User",
     "Message",
+    "PrekeyBundle",
+    "Session",
     "WhatsAppClientError",
     "AuthenticationError",
     "ValidationError",

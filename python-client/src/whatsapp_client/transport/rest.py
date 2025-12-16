@@ -109,6 +109,40 @@ class RestClient:
             logger.error(f"Unexpected error in GET request: {e}")
             raise ClientConnectionError(f"Unexpected error: {e}") from e
 
+    async def delete(self, path: str) -> Dict[str, Any]:
+        """
+        Send DELETE request.
+
+        Args:
+            path: API path
+
+        Returns:
+            Response JSON data
+
+        Raises:
+            ConnectionError: If request fails
+        """
+        url = f"{self.server_url}{path}"
+        logger.debug(f"DELETE {url}")
+
+        try:
+            session = await self._ensure_session()
+            async with session.delete(url, headers=self._get_headers()) as response:
+                # Handle both JSON and empty responses
+                if response.content_type == "application/json":
+                    response_data = await response.json()
+                else:
+                    response_data = {"status": "ok"}
+                logger.debug(f"Response status: {response.status}")
+                return response_data
+
+        except aiohttp.ClientError as e:
+            logger.error(f"DELETE request failed: {e}")
+            raise ClientConnectionError(f"Request failed: {e}") from e
+        except Exception as e:
+            logger.error(f"Unexpected error in DELETE request: {e}")
+            raise ClientConnectionError(f"Unexpected error: {e}") from e
+
     async def close(self) -> None:
         """Close HTTP session."""
         if self._session and not self._session.closed:

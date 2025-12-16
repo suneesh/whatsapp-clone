@@ -5,8 +5,8 @@ from typing import Optional
 
 from .auth import AuthManager
 from .transport import RestClient
-from .crypto import KeyManager
-from .models import User
+from .crypto import KeyManager, SessionManager
+from .models import User, PrekeyBundle, Session
 from .exceptions import WhatsAppClientError
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,7 @@ class WhatsAppClient:
         self._rest = RestClient(server_url)
         self._auth = AuthManager(self)
         self._key_manager: Optional[KeyManager] = None
+        self._session_manager: Optional[SessionManager] = None
 
         # State
         self._closed = False
@@ -181,6 +182,9 @@ class WhatsAppClient:
         self._key_manager = KeyManager(self.user_id, self.storage_path)
         await self._key_manager.initialize()
 
+        # Initialize session manager
+        self._session_manager = SessionManager(self.user_id, self.storage_path)
+
         # Upload public keys to server
         await self._upload_public_keys()
 
@@ -220,6 +224,124 @@ class WhatsAppClient:
         except Exception as e:
             logger.error(f"Key upload failed: {e}")
             raise
+
+    async def ensure_session(self, peer_id: str) -> Session:
+        """
+        Ensure encrypted session exists with peer.
+        
+        If no session exists, establishes one using X3DH protocol.
+        
+        Args:
+            peer_id: Peer's user ID
+            
+        Returns:
+            Session object
+            
+        Raises:
+            WhatsAppClientError: If not authenticated or session establishment fails
+            
+        Example:
+            >>> session = await client.ensure_session("bob_user_id")
+            >>> print(f"Session established: {session.session_id}")
+        """
+        if not self.is_authenticated:
+            raise WhatsAppClientError("Not authenticated")
+        if not self._key_manager:
+            raise WhatsAppClientError("Keys not initialized")
+        if not self._session_manager:
+            raise WhatsAppClientError("Session manager not initialized")
+        
+        # Get identity private key
+        identity_private_key = self._key_manager._identity_keypair.private_key
+        
+        # Ensure session with callbacks
+        session = await self._session_manager.ensure_session(
+            peer_id=peer_id,
+            identity_private_key=identity_private_key,
+            fetch_prekey_bundle_callback=self._fetch_prekey_bundle,
+            mark_prekey_used_callback=self._mark_prekey_used
+        )
+        
+        return session
+    
+    async def _fetch_prekey_bundle(self, peer_id: str) -> PrekeyBundle:
+        """Fetch prekey bundle from server for peer."""
+        try:
+            response = await self._rest.get(f"/api/users/{peer_id}/prekeys")
+            
+            if "error" in response:
+                raise WhatsAppClientError(f"Failed to fetch prekey bundle: {response['error']}")
+            
+            # Parse response into PrekeyBundle
+            bundle = PrekeyBundle(
+                identity_key=response["identityKey"],
+                signing_key=response["signingKey"],
+                fingerprint=response["fingerprint"],
+                signed_prekey=response["signedPrekey"],
+                signature=response["signature"],
+                one_time_prekeys=response.get("oneTimePrekeys", [])
+            )
+            
+            return bundle
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch prekey bundle for {peer_id}: {e}")
+            raise WhatsAppClientError(f"Failed to fetch prekey bundle: {e}")
+    
+    async def _mark_prekey_used(self, prekey_id: str) -> None:
+        """Mark one-time prekey as used on server."""
+        try:
+            await self._rest.delete(f"/api/users/prekeys/{prekey_id}")
+            logger.debug(f"Marked prekey {prekey_id[:8]}... as used")
+        except Exception as e:
+            logger.warning(f"Failed to mark prekey as used: {e}")
+    
+    def get_session(self, peer_id: str) -> Optional[Session]:
+        """
+        Get existing session with peer (does not create new session).
+        
+        Args:
+            peer_id: Peer's user ID
+            
+        Returns:
+            Session object or None if no session exists
+            
+        Example:
+            >>> session = client.get_session("bob_user_id")
+            >>> if session:
+            >>>     print(f"Session exists: {session.session_id}")
+        """
+        if not self._session_manager:
+            return None
+        return self._session_manager.get_session(peer_id)
+    
+    def delete_session(self, peer_id: str) -> None:
+        """
+        Delete session with peer.
+        
+        Args:
+            peer_id: Peer's user ID
+            
+        Example:
+            >>> client.delete_session("bob_user_id")
+        """
+        if self._session_manager:
+            self._session_manager.delete_session(peer_id)
+    
+    def list_sessions(self) -> list[str]:
+        """
+        List all peer IDs with active sessions.
+        
+        Returns:
+            List of peer user IDs
+            
+        Example:
+            >>> peers = client.list_sessions()
+            >>> print(f"Active sessions: {peers}")
+        """
+        if not self._session_manager:
+            return []
+        return self._session_manager.list_sessions()
 
     async def logout(self) -> None:
         """

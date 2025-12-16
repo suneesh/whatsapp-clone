@@ -95,3 +95,26 @@ class ErrorResponse(BaseModel):
     """Error response from API."""
 
     error: str
+
+
+class PrekeyBundle(BaseModel):
+    """Prekey bundle for session establishment."""
+
+    identity_key: str
+    signing_key: str
+    fingerprint: str
+    signed_prekey: str
+    signature: str
+    one_time_prekeys: list[str] = []
+
+
+class Session(BaseModel):
+    """Encrypted session with a peer."""
+
+    session_id: str
+    peer_id: str
+    shared_secret: str
+    ephemeral_key: str
+    initial_message_key: str
+    created_at: str
+    one_time_prekey_used: Optional[str] = None
