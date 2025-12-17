@@ -6,6 +6,7 @@ Enables developers to build bots, automation tools, and integrations.
 """
 
 from .client import WhatsAppClient
+from .async_client import AsyncClient
 from .models import User, Message, PrekeyBundle, Session
 from .exceptions import (
     WhatsAppClientError,
@@ -13,10 +14,19 @@ from .exceptions import (
     ValidationError,
     ConnectionError,
 )
+from .async_utils import (
+    TaskManager,
+    EventLoopManager,
+    AsyncContextManager,
+    ExceptionHandler,
+    managed_task,
+    ensure_async,
+)
 
 __version__ = "0.1.0"
 __all__ = [
     "WhatsAppClient",
+    "AsyncClient",
     "User",
     "Message",
     "PrekeyBundle",
@@ -25,4 +35,10 @@ __all__ = [
     "AuthenticationError",
     "ValidationError",
     "ConnectionError",
+    "TaskManager",
+    "EventLoopManager",
+    "AsyncContextManager",
+    "ExceptionHandler",
+    "managed_task",
+    "ensure_async",
 ]
