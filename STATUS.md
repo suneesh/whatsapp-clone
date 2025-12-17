@@ -14,7 +14,7 @@
 
 ## Python Client Development Progress
 
-### Completed User Stories (78/105 story points - 74%)
+### Completed User Stories (80/105 story points - 76%)
 
 #### ✅ US1: Client Initialization and Authentication (2 pts)
 - Client initialization with server URL and storage path
@@ -133,9 +133,20 @@
 - Traceback capture and storage
 - 35/35 tests passing
 
+#### ✅ US15: Configuration and Customization (2 pts)
+- ClientConfig dataclass with all configurable settings
+- ConfigManager singleton for managing configuration
+- Load/save configuration from/to JSON files
+- Environment variable support for all key settings
+- Server URLs, storage paths, file transfer limits
+- Feature toggles (typing indicators, presence, auto-mark-read)
+- Security settings (fingerprint verification, peer verification)
+- Advanced settings (prekey management, skipped key limits)
+- 31/31 tests passing
+
 ### Implementation Summary
 
-**Total Tests**: 224/224 passing (100%)
+**Total Tests**: 255/255 passing (100%)
 - Authentication: 9 tests
 - Cryptography: 8 tests
 - Models: 4 tests
@@ -149,19 +160,22 @@
 - Group Chat: 25 tests
 - Key Storage & Persistence: 29 tests
 - Error Handling & Logging: 35 tests
+- Configuration & Customization: 31 tests
 
 **Files Created/Updated**:
-- `python-client/src/whatsapp_client/logging.py` - ErrorHandler and logging utilities (NEW)
-- `python-client/src/whatsapp_client/exceptions.py` - Added CryptographyError and StorageError
-- `python-client/tests/test_logging.py` - Comprehensive error handling tests (NEW)
+- `python-client/src/whatsapp_client/config.py` - ClientConfig and ConfigManager (NEW)
+- `python-client/src/whatsapp_client/logging.py` - ErrorHandler and logging utilities
+- `python-client/src/whatsapp_client/exceptions.py` - Additional exception types
+- `python-client/tests/test_config.py` - Configuration tests (NEW)
+- `python-client/tests/test_logging.py` - Logging and error handling tests
 
-**Story Points Completed**: 78/105 (74%)
+**Story Points Completed**: 80/105 (76%)
 
-### Remaining User Stories (27/105 story points)
+### Remaining User Stories (25/105 story points)
 
-- US15: Configuration and Customization (2 pts)
 - US16: Async Event Loop Integration (3 pts)
 - US17: Testing and Examples (5 pts)
+- US18: Package Distribution (3 pts)
 - US18: Package Distribution (3 pts)
 
 ## Features Available
