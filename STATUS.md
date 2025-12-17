@@ -102,9 +102,18 @@
 - MITM attack prevention
 - 20/20 tests passing
 
+#### ✅ US12: Group Chat Support (5 pts)
+- GroupStorage for SQLite-backed groups
+- Create groups with metadata (name, description)
+- Member management (add, remove, check role)
+- Group messaging (save and retrieve)
+- Role-based access control (owner, member)
+- Multiple group support
+- 25/25 tests passing
+
 ### Implementation Summary
 
-**Total Tests**: 137/137 passing (100%)
+**Total Tests**: 162/162 passing (100%)
 - Authentication: 9 tests
 - Cryptography: 8 tests
 - Models: 4 tests
@@ -115,6 +124,7 @@
 - Status & Read Receipts: 17 tests
 - Image Sending/Receiving: 17 tests
 - Fingerprint Verification: 20 tests
+- Group Chat: 25 tests
 
 **Files Created**:
 - `python-client/src/whatsapp_client/client.py` - Main client API
@@ -124,15 +134,15 @@
 - `python-client/src/whatsapp_client/transport/websocket.py` - WebSocket client
 - `python-client/src/whatsapp_client/storage/messages.py` - Message storage
 - `python-client/src/whatsapp_client/storage/fingerprints.py` - Fingerprint storage
+- `python-client/src/whatsapp_client/storage/groups.py` - Group storage
 - `python-client/src/whatsapp_client/models.py` - Data models
 - `python-client/src/whatsapp_client/exceptions.py` - Custom exceptions
 - `python-client/tests/*` - Comprehensive test suite
 
-**Story Points Completed**: 65/105 (62%)
+**Story Points Completed**: 70/105 (67%)
 
-### Remaining User Stories (40/105 story points)
+### Remaining User Stories (35/105 story points)
 
-- US12: Group Chat Support (5 pts)
 - US13: Local Storage and Persistence (5 pts)
 - US14: Error Handling and Logging (3 pts)
 - US15: Configuration and Customization (2 pts)
