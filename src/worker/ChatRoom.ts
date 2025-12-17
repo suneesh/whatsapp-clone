@@ -148,6 +148,23 @@ export class ChatRoom implements DurableObject {
                 console.error('Failed to check user permissions:', error);
               }
 
+              // Validate encryption flag - only server can set this
+              const isEncrypted = data.payload.encrypted === true;
+              let validatedEncrypted = false;
+
+              if (isEncrypted) {
+                // Verify the content is actually encrypted JSON, not plain text
+                try {
+                  const parsed = JSON.parse(data.payload.content);
+                  if (parsed && typeof parsed === 'object' &&
+                      parsed.ciphertext && parsed.iv && parsed.ephemeralPublicKey) {
+                    validatedEncrypted = true;
+                  }
+                } catch (e) {
+                  console.warn('[E2EE] Client sent encrypted flag but content is not valid encrypted JSON');
+                }
+              }
+
               const message: Message = {
                 id: crypto.randomUUID(),
                 from: session.userId,
@@ -157,6 +174,7 @@ export class ChatRoom implements DurableObject {
                 status: 'sent',
                 type: messageType,
                 imageData: data.payload.imageData,
+                encrypted: validatedEncrypted,
               };
 
               console.log(`Message from ${session.userId} to ${data.payload.to}: ${messageType === 'image' ? '📷 Image' : data.payload.content}`);
@@ -179,7 +197,7 @@ export class ChatRoom implements DurableObject {
                   console.log(`[Warning] Recipient ${message.to} not found in database, message not persisted`);
                 } else {
                   await this.env.DB.prepare(
-                    'INSERT INTO messages (id, fromUser, toUser, content, timestamp, status, type, imageData) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                    'INSERT INTO messages (id, fromUser, toUser, content, timestamp, status, type, imageData, encrypted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
                   ).bind(
                     message.id,
                     message.from,
@@ -188,7 +206,8 @@ export class ChatRoom implements DurableObject {
                     message.timestamp,
                     message.status,
                     message.type || 'text',
-                    message.imageData || null
+                    message.imageData || null,
+                    message.encrypted ? 1 : 0
                   ).run();
                   console.log(`Message saved to database: ${message.id}`);
                 }

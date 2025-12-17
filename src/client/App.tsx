@@ -54,13 +54,43 @@ function App() {
   useEffect(() => {
     // Clear users list on mount - only show users who connect via WebSocket
     setUsers([]);
-    
+
     try {
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
         const user = JSON.parse(storedUser);
-        setCurrentUser(user);
-        console.log('[App] Restored user from localStorage:', user.username);
+
+        // Validate user object structure
+        if (
+          user &&
+          typeof user === 'object' &&
+          typeof user.id === 'string' &&
+          typeof user.username === 'string' &&
+          user.id.length > 0 &&
+          user.username.length > 0 &&
+          // Prevent XSS in username
+          !/[<>]/.test(user.username)
+        ) {
+          // Sanitize the user object - only keep safe fields
+          const sanitizedUser: User = {
+            id: user.id,
+            username: user.username,
+            avatar: typeof user.avatar === 'string' ? user.avatar : undefined,
+            role: typeof user.role === 'string' ? user.role : undefined,
+            is_active: typeof user.is_active === 'number' ? user.is_active : undefined,
+            can_send_images: typeof user.can_send_images === 'number' ? user.can_send_images : undefined,
+            created_at: typeof user.created_at === 'number' ? user.created_at : undefined,
+            disabled_at: typeof user.disabled_at === 'number' ? user.disabled_at : undefined,
+            disabled_by: typeof user.disabled_by === 'string' ? user.disabled_by : undefined,
+            lastSeen: typeof user.lastSeen === 'number' ? user.lastSeen : undefined,
+          };
+
+          setCurrentUser(sanitizedUser);
+          console.log('[App] Restored user from localStorage:', sanitizedUser.username);
+        } else {
+          console.warn('[App] Invalid user data in localStorage, clearing');
+          localStorage.removeItem('user');
+        }
       }
     } catch (error) {
       console.error('Failed to restore user from localStorage:', error);
@@ -69,12 +99,12 @@ function App() {
   }, []);
 
   const handleMessage = useCallback(async (message: Message) => {
-    // Decrypt if encrypted (starts with E2EE: marker)
+    // Decrypt if encrypted (check server-validated encrypted flag)
     let decryptedMessage = message;
-    if (message.type === 'text' && message.content.startsWith('E2EE:')) {
+    if (message.encrypted && message.type === 'text') {
       try {
-        const encryptedPayload = message.content.substring(5); // Remove "E2EE:" prefix
-        const encryptedData = JSON.parse(encryptedPayload);
+        // Content should be JSON with encrypted data
+        const encryptedData = JSON.parse(message.content);
         const plaintext = await decryptMessage(message.from, encryptedData);
         decryptedMessage = {
           ...message,
@@ -315,23 +345,23 @@ function App() {
   const handleSendMessage = useCallback(async (to: string, content: string) => {
     if (!e2eeReady) {
       console.warn('[E2EE] Not ready, sending unencrypted');
-      sendMessage(to, content);
+      sendMessage(to, content, false);
       return;
     }
 
     try {
       // Ensure session exists
       await ensureSession(to);
-      
+
       // Encrypt the message
       const encrypted = await encryptMessage(to, content);
-      
-      // Send encrypted message - prefix with E2EE marker so we can identify it
-      const encryptedPayload = `E2EE:${JSON.stringify(encrypted)}`;
-      sendMessage(to, encryptedPayload);
+
+      // Send encrypted message as JSON with encrypted flag
+      const encryptedPayload = JSON.stringify(encrypted);
+      sendMessage(to, encryptedPayload, true);
     } catch (err) {
       console.error('[E2EE] Encryption failed, sending unencrypted:', err);
-      sendMessage(to, content);
+      sendMessage(to, content, false);
     }
   }, [e2eeReady, ensureSession, encryptMessage, sendMessage]);
 

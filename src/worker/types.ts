@@ -26,6 +26,7 @@ export interface Message {
   status: 'sent' | 'delivered' | 'read';
   type?: 'text' | 'image';
   imageData?: string;
+  encrypted?: boolean; // Server-validated E2EE flag
 }
 
 export interface WSMessage {

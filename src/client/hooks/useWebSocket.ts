@@ -110,10 +110,17 @@ export const useWebSocket = ({
             break;
           case 'error':
             console.error('[WebSocket] Server error:', data.payload.message);
-            // Force logout on authentication error
+            // Handle authentication errors with user confirmation
             if (data.payload.message.includes('not found') || data.payload.message.includes('log in again')) {
-              localStorage.removeItem('user');
-              window.location.reload();
+              const shouldLogout = confirm(
+                'Session error: ' + data.payload.message + '\n\n' +
+                'Would you like to logout and login again? If you click "Cancel", ' +
+                'you can try reconnecting by refreshing the page.'
+              );
+              if (shouldLogout) {
+                localStorage.removeItem('user');
+                window.location.reload();
+              }
             }
             break;
         }
@@ -158,12 +165,12 @@ export const useWebSocket = ({
     };
   }, [connect, enabled, userId]);
 
-  const sendMessage = useCallback((to: string, content: string) => {
+  const sendMessage = useCallback((to: string, content: string, encrypted: boolean = false) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(
         JSON.stringify({
           type: 'message',
-          payload: { to, content, messageType: 'text' },
+          payload: { to, content, messageType: 'text', encrypted },
         })
       );
     }

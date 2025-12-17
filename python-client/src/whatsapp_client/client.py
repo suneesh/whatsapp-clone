@@ -64,6 +64,7 @@ class WhatsAppClient:
         self._ws: Optional[WebSocketClient] = None
         self._message_storage: Optional[MessageStorage] = None
         self._fingerprint_storage: Optional[Any] = None
+        self._group_storage: Optional[Any] = None
 
         # State
         self._closed = False
@@ -71,6 +72,7 @@ class WhatsAppClient:
         self._typing_handlers: List[Callable] = []
         self._status_handlers: List[Callable] = []
         self._presence_handlers: List[Callable] = []
+        self._group_message_handlers: List[Callable] = []
         self._online_users: Dict[str, bool] = {}  # Track online presence
 
     @property
@@ -371,6 +373,10 @@ class WhatsAppClient:
         # Initialize fingerprint storage
         from .storage import FingerprintStorage
         self._fingerprint_storage = FingerprintStorage(self.storage_path, self.user_id)
+        
+        # Initialize group storage
+        from .storage import GroupStorage
+        self._group_storage = GroupStorage(self.storage_path, self.user_id)
 
         # Upload public keys to server
         await self._upload_public_keys()
@@ -1196,6 +1202,257 @@ class WhatsAppClient:
             ...     print(f"{user_id}: {'online' if online else 'offline'}")
         """
         return self._online_users.copy()
+
+    # Group Chat Methods
+
+    async def create_group(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        member_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a new group chat.
+
+        Args:
+            name: Group name
+            description: Optional group description
+            member_ids: List of member IDs to add (excluding creator)
+
+        Returns:
+            Dict with group data (id, name, description, owner_id, members)
+
+        Raises:
+            WhatsAppClientError: If group creation fails
+
+        Example:
+            >>> group = await client.create_group(
+            ...     name="Dev Team",
+            ...     description="Developers only",
+            ...     member_ids=["user1", "user2"]
+            ... )
+            >>> print(f"Group {group['id']}: {group['name']}")
+        """
+        if not self._group_storage:
+            raise WhatsAppClientError("Group storage not initialized")
+
+        try:
+            group = self._group_storage.create_group(name, description, member_ids)
+            logger.info(f"Created group {group['id']}: {name}")
+            return group
+        except Exception as e:
+            logger.error(f"Failed to create group: {e}")
+            raise WhatsAppClientError(f"Failed to create group: {e}")
+
+    async def get_groups(self) -> List[Dict[str, Any]]:
+        """
+        Get all groups current user is member of.
+
+        Returns:
+            List of group dicts
+
+        Example:
+            >>> groups = await client.get_groups()
+            >>> for group in groups:
+            ...     print(f"{group['name']}: {len(group['members'])} members")
+        """
+        if not self._group_storage:
+            return []
+
+        return self._group_storage.get_groups()
+
+    async def get_group(self, group_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get group details.
+
+        Args:
+            group_id: Group ID
+
+        Returns:
+            Dict with group metadata or None
+
+        Example:
+            >>> group = await client.get_group("group_123")
+            >>> if group:
+            ...     print(f"{group['name']}: {len(group['members'])} members")
+        """
+        if not self._group_storage:
+            return None
+
+        return self._group_storage.get_group(group_id)
+
+    async def send_group_message(
+        self,
+        group_id: str,
+        content: str,
+    ) -> bool:
+        """
+        Send message to group.
+
+        Args:
+            group_id: Group ID
+            content: Message content
+
+        Returns:
+            True if successful
+
+        Raises:
+            WhatsAppClientError: If not a group member or send fails
+
+        Example:
+            >>> success = await client.send_group_message(
+            ...     group_id="group_123",
+            ...     content="Hello everyone!"
+            ... )
+        """
+        if not self._group_storage:
+            raise WhatsAppClientError("Group storage not initialized")
+
+        if not self._group_storage.is_member(group_id, self.user_id):
+            raise WhatsAppClientError("Not a member of this group")
+
+        try:
+            # Save to local storage
+            self._group_storage.save_group_message(group_id, self.user_id, content)
+
+            # Send to server via WebSocket
+            if self._ws and self._ws.is_connected:
+                await self._ws.send({
+                    "type": "group_message",
+                    "groupId": group_id,
+                    "content": content,
+                })
+
+            logger.info(f"Sent group message to {group_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send group message: {e}")
+            raise WhatsAppClientError(f"Failed to send group message: {e}")
+
+    async def get_group_messages(
+        self,
+        group_id: str,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get group message history.
+
+        Args:
+            group_id: Group ID
+            limit: Max messages to retrieve (default: 50)
+
+        Returns:
+            List of message dicts
+
+        Example:
+            >>> messages = await client.get_group_messages("group_123")
+            >>> for msg in messages:
+            ...     print(f"{msg['from_user']}: {msg['content']}")
+        """
+        if not self._group_storage:
+            return []
+
+        return self._group_storage.get_group_messages(group_id, limit)
+
+    async def add_group_member(self, group_id: str, member_id: str) -> bool:
+        """
+        Add member to group (owner only).
+
+        Args:
+            group_id: Group ID
+            member_id: User ID to add
+
+        Returns:
+            True if successful
+
+        Raises:
+            WhatsAppClientError: If not owner or operation fails
+
+        Example:
+            >>> success = await client.add_group_member("group_123", "user_new")
+        """
+        if not self._group_storage:
+            raise WhatsAppClientError("Group storage not initialized")
+
+        if not self._group_storage.is_owner(group_id, self.user_id):
+            raise WhatsAppClientError("Only group owner can add members")
+
+        try:
+            result = self._group_storage.add_member(group_id, member_id)
+            logger.info(f"Added {member_id} to group {group_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to add member: {e}")
+            raise WhatsAppClientError(f"Failed to add member: {e}")
+
+    async def remove_group_member(self, group_id: str, member_id: str) -> bool:
+        """
+        Remove member from group (owner only).
+
+        Args:
+            group_id: Group ID
+            member_id: User ID to remove
+
+        Returns:
+            True if successful
+
+        Raises:
+            WhatsAppClientError: If not owner or operation fails
+
+        Example:
+            >>> success = await client.remove_group_member("group_123", "user_old")
+        """
+        if not self._group_storage:
+            raise WhatsAppClientError("Group storage not initialized")
+
+        if not self._group_storage.is_owner(group_id, self.user_id):
+            raise WhatsAppClientError("Only group owner can remove members")
+
+        try:
+            result = self._group_storage.remove_member(group_id, member_id)
+            logger.info(f"Removed {member_id} from group {group_id}")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to remove member: {e}")
+            raise WhatsAppClientError(f"Failed to remove member: {e}")
+
+    async def leave_group(self, group_id: str) -> bool:
+        """
+        Leave a group.
+
+        Args:
+            group_id: Group ID
+
+        Returns:
+            True if successful
+
+        Example:
+            >>> success = await client.leave_group("group_123")
+        """
+        if not self._group_storage:
+            raise WhatsAppClientError("Group storage not initialized")
+
+        return self._group_storage.remove_member(group_id, self.user_id)
+
+    def on_group_message(self, handler: Callable) -> Callable:
+        """
+        Register handler for group messages.
+
+        Args:
+            handler: Async function to handle group messages
+
+        Returns:
+            The handler function (for decorator support)
+
+        Example:
+            >>> @client.on_group_message
+            ... async def handle_group_msg(message):
+            ...     print(f"[{message['group_id']}] {message['from_user']}: {message['content']}")
+        """
+        self._group_message_handlers.append(handler)
+        logger.debug(f"Registered group message handler: {handler.__name__}")
+        return handler
 
     async def logout(self) -> None:
         """
