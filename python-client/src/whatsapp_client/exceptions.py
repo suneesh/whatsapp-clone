@@ -47,3 +47,15 @@ class UsernameExistsError(ValidationError):
     """Username already taken."""
 
     pass
+
+
+class CryptographyError(WhatsAppClientError):
+    """Cryptographic operation failed."""
+
+    pass
+
+
+class StorageError(WhatsAppClientError):
+    """Storage operation failed."""
+
+    pass
