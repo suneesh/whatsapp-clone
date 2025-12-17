@@ -76,16 +76,45 @@
 - Event handlers for typing and presence
 - 16/16 tests passing
 
+#### ✅ US9: Message Status Tracking and Read Receipts (3 pts)
+- Message status tracking (sent, delivered, read)
+- Mark messages as read
+- Event handlers for status updates
+- Auto-mark as read on receive
+- Persistence in SQLite
+- 17/17 tests passing
+
+#### ✅ US10: Image and File Sending (5 pts)
+- Send images with encryption
+- Receive and save images
+- Base64 encoding for binary data
+- File size validation (default 5MB limit)
+- Auto-directory creation
+- Integrated with message storage
+- 17/17 tests passing
+
+#### ✅ US11: Key Fingerprint Verification (5 pts)
+- FingerprintStorage for SQLite persistence
+- Get peer fingerprints from sessions
+- Verify fingerprints and track verification status
+- Query verified fingerprints
+- Fingerprint comparison utility
+- MITM attack prevention
+- 20/20 tests passing
+
 ### Implementation Summary
 
-**Total Tests**: 83/83 passing (100%)
+**Total Tests**: 137/137 passing (100%)
 - Authentication: 9 tests
-- Cryptography: 8 tests  
+- Cryptography: 8 tests
 - Models: 4 tests
 - Sessions (X3DH): 14 tests
 - Ratchet (Encryption/Decryption): 15 tests
 - Messaging (WebSocket): 17 tests
 - Presence & Typing: 16 tests
+- Status & Read Receipts: 17 tests
+- Image Sending/Receiving: 17 tests
+- Fingerprint Verification: 20 tests
 
 **Files Created**:
 - `python-client/src/whatsapp_client/client.py` - Main client API
@@ -94,15 +123,15 @@
 - `python-client/src/whatsapp_client/crypto/ratchet.py` - Double Ratchet algorithm
 - `python-client/src/whatsapp_client/transport/websocket.py` - WebSocket client
 - `python-client/src/whatsapp_client/storage/messages.py` - Message storage
+- `python-client/src/whatsapp_client/storage/fingerprints.py` - Fingerprint storage
 - `python-client/src/whatsapp_client/models.py` - Data models
 - `python-client/src/whatsapp_client/exceptions.py` - Custom exceptions
 - `python-client/tests/*` - Comprehensive test suite
 
-### Remaining User Stories (53/105 story points)
+**Story Points Completed**: 65/105 (62%)
 
-- US9: Message Status Tracking and Read Receipts (3 pts)
-- US10: Image and File Sending (5 pts)
-- US11: Key Fingerprint Verification (5 pts)
+### Remaining User Stories (40/105 story points)
+
 - US12: Group Chat Support (5 pts)
 - US13: Local Storage and Persistence (5 pts)
 - US14: Error Handling and Logging (3 pts)
