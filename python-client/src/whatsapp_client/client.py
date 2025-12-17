@@ -328,7 +328,7 @@ class WhatsAppClient:
         # Initialize cryptographic keys
         logger.info("Initializing cryptographic keys...")
         self._key_manager = KeyManager(self.user_id, self.storage_path)
-        await self._key_manager.initialize()
+        await self._key_manager.initialize(password=password)
 
         # Upload public keys to server
         await self._upload_public_keys()
@@ -362,7 +362,7 @@ class WhatsAppClient:
         # Initialize cryptographic keys
         logger.info("Initializing cryptographic keys...")
         self._key_manager = KeyManager(self.user_id, self.storage_path)
-        await self._key_manager.initialize()
+        await self._key_manager.initialize(password=password)
 
         # Initialize session manager
         self._session_manager = SessionManager(self.user_id, self.storage_path)

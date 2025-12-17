@@ -10,6 +10,7 @@ import nacl.utils
 
 from .utils import format_fingerprint, encode_base64, decode_base64
 from ..exceptions import ValidationError
+from ..storage import KeyStorage
 
 logger = logging.getLogger(__name__)
 
@@ -70,35 +71,133 @@ class KeyManager:
     def __init__(self, user_id: str, storage_path: str = "~/.whatsapp_client"):
         """
         Initialize KeyManager.
-        
+
         Args:
             user_id: User ID for key storage
             storage_path: Base path for key storage
         """
         self.user_id = user_id
         self.storage_path = os.path.expanduser(storage_path)
-        
+
+        # Initialize key storage with encryption
+        self.key_storage = KeyStorage(self.storage_path, user_id)
+
         # Keys (loaded on demand)
         self._identity_keypair: Optional[KeyPair] = None
         self._signing_keypair: Optional[KeyPair] = None
         self._signed_prekey: Optional[Dict[str, Any]] = None
         self._one_time_prekeys: List[Dict[str, Any]] = []
-        
+        self._password: Optional[str] = None
+
         logger.info(f"Initialized KeyManager for user {user_id}")
     
-    async def initialize(self) -> None:
+    async def initialize(self, password: Optional[str] = None) -> None:
         """
         Initialize cryptographic keys.
-        
-        Generates keys if they don't exist, otherwise loads from storage.
+
+        Loads keys from encrypted storage if they exist and password is provided,
+        otherwise generates new keys.
+
+        Args:
+            password: Password for encrypted key storage (required for persistence)
         """
         logger.info("Initializing cryptographic keys...")
-        
-        # For now, always generate new keys (storage implementation in US13)
+
+        self._password = password
+
+        # Try to load existing keys if password provided
+        if password and self.key_storage.has_keys():
+            logger.info("Loading existing keys from storage...")
+            keys_data = self.key_storage.load_keys(password)
+
+            if keys_data:
+                await self._load_keys_from_storage(keys_data)
+                logger.info("Keys loaded successfully from storage")
+                return
+
+        # Generate new keys
+        logger.info("Generating new keys...")
         await self._generate_identity_keys()
         await self._generate_prekeys()
-        
+
+        # Save to encrypted storage if password provided
+        if password:
+            await self._save_keys_to_storage(password)
+
         logger.info("Cryptographic keys initialized")
+
+    async def _save_keys_to_storage(self, password: str) -> None:
+        """Save keys to encrypted storage."""
+        try:
+            keys_data = {
+                "identity_public_key": encode_base64(self._identity_keypair.public_key),
+                "identity_private_key": encode_base64(self._identity_keypair.private_key),
+                "signing_public_key": encode_base64(self._signing_keypair.public_key),
+                "signing_private_key": encode_base64(self._signing_keypair.private_key),
+                "signed_prekey": {
+                    "keyId": self._signed_prekey["keyId"],
+                    "publicKey": self._signed_prekey["publicKey"],
+                    "signature": self._signed_prekey["signature"],
+                    "privateKey": encode_base64(self._signed_prekey["privateKey"]),
+                },
+                "one_time_prekeys": [
+                    {
+                        "keyId": pk["keyId"],
+                        "publicKey": pk["publicKey"],
+                        "privateKey": encode_base64(pk["privateKey"]),
+                    }
+                    for pk in self._one_time_prekeys
+                ],
+            }
+
+            success = self.key_storage.save_keys(keys_data, password)
+            if success:
+                logger.info("Keys saved to encrypted storage")
+            else:
+                logger.warning("Failed to save keys to storage")
+
+        except Exception as e:
+            logger.error(f"Error saving keys: {e}")
+
+    async def _load_keys_from_storage(self, keys_data: Dict[str, Any]) -> None:
+        """Load keys from decrypted storage data."""
+        try:
+            # Load identity keypair
+            self._identity_keypair = KeyPair(
+                public_key=decode_base64(keys_data["identity_public_key"]),
+                private_key=decode_base64(keys_data["identity_private_key"]),
+            )
+
+            # Load signing keypair
+            self._signing_keypair = KeyPair(
+                public_key=decode_base64(keys_data["signing_public_key"]),
+                private_key=decode_base64(keys_data["signing_private_key"]),
+            )
+
+            # Load signed prekey
+            signed_prekey_data = keys_data["signed_prekey"]
+            self._signed_prekey = {
+                "keyId": signed_prekey_data["keyId"],
+                "publicKey": signed_prekey_data["publicKey"],
+                "signature": signed_prekey_data["signature"],
+                "privateKey": decode_base64(signed_prekey_data["privateKey"]),
+            }
+
+            # Load one-time prekeys
+            self._one_time_prekeys = [
+                {
+                    "keyId": pk["keyId"],
+                    "publicKey": pk["publicKey"],
+                    "privateKey": decode_base64(pk["privateKey"]),
+                }
+                for pk in keys_data["one_time_prekeys"]
+            ]
+
+            logger.info("Keys loaded from storage successfully")
+
+        except Exception as e:
+            logger.error(f"Error loading keys from storage: {e}")
+            raise
     
     async def _generate_identity_keys(self) -> None:
         """Generate identity and signing key pairs."""
