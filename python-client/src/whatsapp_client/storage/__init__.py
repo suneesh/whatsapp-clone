@@ -1,5 +1,6 @@
 """Storage modules."""
 
 from .messages import MessageStorage
+from .fingerprints import FingerprintStorage
 
-__all__ = ["MessageStorage"]
+__all__ = ["MessageStorage", "FingerprintStorage"]

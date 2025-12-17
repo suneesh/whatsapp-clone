@@ -63,6 +63,7 @@ class WhatsAppClient:
         self._session_manager: Optional[SessionManager] = None
         self._ws: Optional[WebSocketClient] = None
         self._message_storage: Optional[MessageStorage] = None
+        self._fingerprint_storage: Optional[Any] = None
 
         # State
         self._closed = False
@@ -116,6 +117,165 @@ class WhatsAppClient:
         if not self._key_manager:
             raise WhatsAppClientError("Keys not initialized")
         return self._key_manager.get_fingerprint()
+    
+    async def get_peer_fingerprint(self, peer_id: str) -> str:
+        """
+        Get peer's encryption key fingerprint.
+        
+        Retrieves the fingerprint from the established session with the peer.
+        
+        Args:
+            peer_id: Peer user ID
+            
+        Returns:
+            Peer's 60-character hexadecimal fingerprint
+            
+        Raises:
+            WhatsAppClientError: If session not established or peer not found
+            
+        Example:
+            >>> peer_fp = await client.get_peer_fingerprint("user_123")
+            >>> print(f"Peer fingerprint: {peer_fp}")
+        """
+        if not self._session_manager:
+            raise WhatsAppClientError("Session manager not initialized")
+        
+        try:
+            # Ensure session exists
+            await self.ensure_session(peer_id)
+            
+            # Get session and compute fingerprint from peer's identity key
+            session = self._session_manager.get_session(peer_id)
+            if not session:
+                raise WhatsAppClientError(f"No session with {peer_id}")
+            
+            # Compute fingerprint from peer's DH public key
+            import hashlib
+            peer_key_bytes = session.dh_public_key.public_bytes_raw()
+            fingerprint_hash = hashlib.sha256(peer_key_bytes).hexdigest().upper()
+            
+            logger.debug(f"Got peer fingerprint for {peer_id}")
+            return fingerprint_hash
+            
+        except Exception as e:
+            logger.error(f"Failed to get peer fingerprint: {e}")
+            raise WhatsAppClientError(f"Failed to get peer fingerprint: {e}")
+    
+    async def verify_fingerprint(
+        self,
+        peer_id: str,
+        fingerprint: Optional[str] = None,
+        verified: bool = True,
+    ) -> bool:
+        """
+        Verify a peer's encryption key fingerprint.
+        
+        Call this after verifying the fingerprint out-of-band (e.g., QR code scan).
+        
+        Args:
+            peer_id: Peer user ID
+            fingerprint: Expected fingerprint (optional, for validation)
+            verified: Mark as verified (default: True)
+            
+        Returns:
+            True if verification successful, False otherwise
+            
+        Raises:
+            WhatsAppClientError: If verification fails
+            
+        Example:
+            >>> # After scanning QR code and verifying fingerprint matches:
+            >>> await client.verify_fingerprint("user_123", verified=True)
+            >>> is_verified = await client.is_fingerprint_verified("user_123")
+        """
+        from .storage import FingerprintStorage
+        
+        if not self._fingerprint_storage:
+            raise WhatsAppClientError("Fingerprint storage not initialized")
+        
+        try:
+            # Get peer's current fingerprint if not provided
+            if fingerprint is None:
+                fingerprint = await self.get_peer_fingerprint(peer_id)
+            
+            # Get stored fingerprint to validate
+            stored_fp = self._fingerprint_storage.get_fingerprint(peer_id)
+            
+            if stored_fp and fingerprint != stored_fp["fingerprint"]:
+                logger.warning(f"Fingerprint mismatch for {peer_id}!")
+                raise WhatsAppClientError(f"Fingerprint mismatch for {peer_id}")
+            
+            # Mark as verified
+            success = self._fingerprint_storage.verify_fingerprint(peer_id, verified)
+            
+            if success:
+                logger.info(f"Fingerprint for {peer_id} verified: {verified}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Fingerprint verification failed: {e}")
+            raise WhatsAppClientError(f"Fingerprint verification failed: {e}")
+    
+    async def is_fingerprint_verified(self, peer_id: str) -> bool:
+        """
+        Check if a peer's fingerprint is verified.
+        
+        Args:
+            peer_id: Peer user ID
+            
+        Returns:
+            True if fingerprint is verified, False otherwise
+            
+        Example:
+            >>> verified = await client.is_fingerprint_verified("user_123")
+            >>> print(f"Verified: {verified}")
+        """
+        if not self._fingerprint_storage:
+            return False
+        
+        return self._fingerprint_storage.is_verified(peer_id)
+    
+    async def get_verified_fingerprints(self) -> List[Dict[str, Any]]:
+        """
+        Get list of all verified peer fingerprints.
+        
+        Returns:
+            List of verified fingerprint records
+            
+        Example:
+            >>> verified = await client.get_verified_fingerprints()
+            >>> for record in verified:
+            ...     print(f"{record['peer_id']}: {record['fingerprint']}")
+        """
+        if not self._fingerprint_storage:
+            return []
+        
+        return self._fingerprint_storage.get_verified_fingerprints()
+    
+    @staticmethod
+    def compare_fingerprints(fingerprint1: str, fingerprint2: str) -> bool:
+        """
+        Compare two fingerprints for equality.
+        
+        Args:
+            fingerprint1: First fingerprint
+            fingerprint2: Second fingerprint
+            
+        Returns:
+            True if fingerprints match, False otherwise
+            
+        Example:
+            >>> match = client.compare_fingerprints(my_fp, peer_fp)
+        """
+        if not fingerprint1 or not fingerprint2:
+            return False
+        
+        # Normalize to uppercase and remove whitespace
+        fp1 = fingerprint1.upper().replace(" ", "").replace("\n", "")
+        fp2 = fingerprint2.upper().replace(" ", "").replace("\n", "")
+        
+        return fp1 == fp2
 
     async def get_prekey_status(self) -> dict:
         """
@@ -207,6 +367,10 @@ class WhatsAppClient:
         
         # Initialize message storage
         self._message_storage = MessageStorage(self.storage_path, self.user_id)
+        
+        # Initialize fingerprint storage
+        from .storage import FingerprintStorage
+        self._fingerprint_storage = FingerprintStorage(self.storage_path, self.user_id)
 
         # Upload public keys to server
         await self._upload_public_keys()
