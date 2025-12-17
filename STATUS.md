@@ -14,7 +14,7 @@
 
 ## Python Client Development Progress
 
-### Completed User Stories (52/105 story points - 50%)
+### Completed User Stories (75/105 story points - 71%)
 
 #### ✅ US1: Client Initialization and Authentication (2 pts)
 - Client initialization with server URL and storage path
@@ -111,9 +111,21 @@
 - Multiple group support
 - 25/25 tests passing
 
+#### ✅ US13: Local Storage and Persistent Key Management (5 pts)
+- KeyStorage for encrypted key persistence
+- Argon2id password-based key derivation (64MB, 3 iterations)
+- AES-256-GCM encryption for key files
+- Secure file permissions (0600 Unix, restricted Windows)
+- Key serialization/deserialization (JSON, Base64)
+- Backup/restore functionality with encryption
+- Secure file overwriting before deletion
+- KeyManager integration with password-protected keys
+- Load or generate keys on login based on password
+- 29/29 tests passing
+
 ### Implementation Summary
 
-**Total Tests**: 162/162 passing (100%)
+**Total Tests**: 189/189 passing (100%)
 - Authentication: 9 tests
 - Cryptography: 8 tests
 - Models: 4 tests
@@ -125,25 +137,18 @@
 - Image Sending/Receiving: 17 tests
 - Fingerprint Verification: 20 tests
 - Group Chat: 25 tests
+- Key Storage & Persistence: 29 tests
 
-**Files Created**:
-- `python-client/src/whatsapp_client/client.py` - Main client API
-- `python-client/src/whatsapp_client/crypto/keys.py` - Key generation
-- `python-client/src/whatsapp_client/crypto/session_manager.py` - X3DH & sessions
-- `python-client/src/whatsapp_client/crypto/ratchet.py` - Double Ratchet algorithm
-- `python-client/src/whatsapp_client/transport/websocket.py` - WebSocket client
-- `python-client/src/whatsapp_client/storage/messages.py` - Message storage
-- `python-client/src/whatsapp_client/storage/fingerprints.py` - Fingerprint storage
-- `python-client/src/whatsapp_client/storage/groups.py` - Group storage
-- `python-client/src/whatsapp_client/models.py` - Data models
-- `python-client/src/whatsapp_client/exceptions.py` - Custom exceptions
-- `python-client/tests/*` - Comprehensive test suite
+**Files Created/Updated**:
+- `python-client/src/whatsapp_client/storage/keys.py` - KeyStorage for encrypted persistence (NEW)
+- `python-client/src/whatsapp_client/crypto/key_manager.py` - Updated with persistent key loading
+- `python-client/src/whatsapp_client/client.py` - Updated login/register to use password for key encryption
+- `python-client/tests/test_keys.py` - Comprehensive KeyStorage tests (NEW)
 
-**Story Points Completed**: 70/105 (67%)
+**Story Points Completed**: 75/105 (71%)
 
-### Remaining User Stories (35/105 story points)
+### Remaining User Stories (30/105 story points)
 
-- US13: Local Storage and Persistence (5 pts)
 - US14: Error Handling and Logging (3 pts)
 - US15: Configuration and Customization (2 pts)
 - US16: Async Event Loop Integration (3 pts)
