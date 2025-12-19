@@ -679,10 +679,12 @@ class WhatsAppClient:
             # Worker sends { type: 'message', payload: {...} }
             payload = data.get("payload", data)
             
+            from_user = payload["from"]
+            
             # Create Message object
             message = Message(
                 id=payload.get("id", str(uuid.uuid4())),
-                from_user=payload["from"],
+                from_user=from_user,
                 to=self.user_id,
                 content=payload["content"],
                 type=payload.get("type", "text"),
@@ -690,12 +692,19 @@ class WhatsAppClient:
                 status="delivered",
             )
             
-            # Decrypt if encrypted
-            if message.content.startswith("E2EE:"):
+            # Decrypt if encrypted (check for Signal protocol format)
+            if payload.get("encrypted"):
                 try:
-                    message.content = self.decrypt_message(message.from_user, message.content)
+                    # Ensure session exists with sender before decrypting
+                    if not self._session_manager:
+                        raise WhatsAppClientError("Session manager not initialized")
+                    
+                    await self.ensure_session(from_user)
+                    
+                    # Now decrypt the message
+                    message.content = self._session_manager.decrypt_message(from_user, message.content)
                 except Exception as e:
-                    logger.error(f"Failed to decrypt message: {e}")
+                    logger.error(f"Failed to decrypt message from {from_user}: {e}")
                     # Keep encrypted content for debugging
             
             # Save to storage
