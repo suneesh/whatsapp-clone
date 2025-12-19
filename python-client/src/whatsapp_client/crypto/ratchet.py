@@ -150,6 +150,7 @@ class RatchetEngine:
         # Match JavaScript: first derive root key and initial chain key from shared secret
         # JS: kdfRootKey(sharedSecret, new Uint8Array(32))
         # In kdfRootKey: hkdf(dhOutput, { salt: rootKey, ... })
+        # Parameters: kdfRootKey(rootKey, dhOutput) → hkdf(dhOutput, { salt: rootKey, ... })
         # So: hkdf(zeros, { salt: sharedSecret, ... })
         initial_root_key, initial_chain_key = self._kdf_rk(shared_secret, bytes(32))
         
