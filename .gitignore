@@ -35,3 +35,4 @@ coverage/
 *.tmp
 .cache/
 nul
+*/fingerprints.db

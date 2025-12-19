@@ -113,7 +113,14 @@ class SessionManager:
             identity_private_key,
             prekey_bundle
         )
-        
+
+        # Get identity public key for X3DH data
+        from nacl.bindings import crypto_scalarmult_ed25519_base_noclamp
+        from nacl.encoding import RawEncoder as NaClRawEncoder
+        identity_public_key = crypto_scalarmult_ed25519_base_noclamp(
+            bytes(identity_private_key)
+        )
+
         # Create session record
         session = Session(
             session_id=f"{self.user_id}_{peer_id}_{datetime.now().timestamp()}",
@@ -124,22 +131,57 @@ class SessionManager:
             created_at=datetime.now().isoformat(),
             one_time_prekey_used=None
         )
-        
+
+        # Store X3DH data for first message (will be cleared after sending)
+        import base64
+        session.x3dh_data = {
+            "localIdentityKey": base64.b64encode(identity_public_key).decode('utf-8'),
+            "localEphemeralKey": base64.b64encode(
+                ephemeral_key.public_key.encode(encoder=RawEncoder)
+            ).decode('utf-8'),
+            "usedSignedPrekeyId": prekey_bundle.signed_prekey_id,
+            "usedOneTimePrekeyId": prekey_bundle.one_time_prekey_id
+        }
+
         # Mark one-time prekey as used if it was consumed
         if prekey_bundle.one_time_prekeys and len(prekey_bundle.one_time_prekeys) > 0:
             one_time_prekey_id = prekey_bundle.one_time_prekeys[0]
             session.one_time_prekey_used = one_time_prekey_id
-            
+
             try:
                 await mark_prekey_used_callback(one_time_prekey_id)
                 logger.info(f"Marked one-time prekey {one_time_prekey_id[:8]}... as used")
             except Exception as e:
                 logger.warning(f"Failed to mark prekey as used: {e}")
-        
+
+        # Initialize ratchet with shared secret as sender/initiator
+        # This matches JavaScript: kdfRootKey(sharedSecret, new Uint8Array(32))
+        ratchet = RatchetEngine()
+
+        # Derive root key and initial chain key from shared secret and 32 zero bytes
+        # Matches JavaScript implementation in initializeRatchet()
+        new_root_key, initial_chain_key = ratchet._kdf_rk(shared_secret, bytes(32))
+
+        # Generate our DH ratchet key pair for Double Ratchet
+        dh_ratchet_key = PrivateKey.generate()
+
+        # Set up initial state for sender (no remote ratchet key yet)
+        ratchet.state.root_key = new_root_key
+        ratchet.state.dh_self = dh_ratchet_key
+        ratchet.state.dh_remote = None  # Will be set when we receive first response
+        ratchet.state.sending_chain_key = initial_chain_key  # Sender uses chain key
+        ratchet.state.receiving_chain_key = None
+        ratchet.state.sending_message_number = 0
+        ratchet.state.receiving_message_number = 0
+        ratchet.state.prev_sending_chain_length = 0
+
+        # Save ratchet state to session
+        session.ratchet_state = ratchet.serialize_state()
+
         # Store session
         self._save_session(session)
         self._sessions[peer_id] = session
-        
+
         logger.info(f"Session established with {peer_id}: {session.session_id}")
         return session
 
@@ -210,6 +252,7 @@ class SessionManager:
         )
         
         logger.info(f"X3DH responder shared secret derived for {peer_id}")
+        logger.debug(f"Shared secret (hex): {shared_secret.hex()}")
         
         # Create session record
         from datetime import datetime
@@ -233,9 +276,13 @@ class SessionManager:
             raise WhatsAppClientError("Missing ratchet key in message header")
         
         sender_ratchet_key = base64.b64decode(sender_ratchet_key_b64)
+        logger.debug(f"Sender's ratchet key (base64): {sender_ratchet_key_b64}")
+        logger.debug(f"Sender's ratchet key (hex): {sender_ratchet_key.hex()}")
         
         # Initialize ratchet as receiver with sender's ratchet key
+        logger.debug(f"Calling initialize_responder with shared_secret={shared_secret.hex()[:16]}...")
         ratchet.initialize_responder(shared_secret, sender_ratchet_key)
+        logger.debug(f"Ratchet initialized. State: root_key={ratchet.state.root_key.hex()[:16]}..., receiving_chain_key={ratchet.state.receiving_chain_key.hex() if ratchet.state.receiving_chain_key else 'None'}")
         
         # Save ratchet state to session
         session.ratchet_state = ratchet.serialize_state()
@@ -258,6 +305,8 @@ class SessionManager:
         
         header = RatchetHeader.from_dict(header_data)
         
+        logger.debug(f"Attempting to decrypt first message. Header: {header.to_dict()}")
+        
         # Decrypt with the ratchet
         plaintext = ratchet.decrypt(ciphertext, header, auth_tag)
         
@@ -265,6 +314,7 @@ class SessionManager:
         session.ratchet_state = ratchet.serialize_state()
         self._save_session(session)
         
+        logger.info(f"Successfully decrypted first message from {peer_id}: plaintext='{plaintext[:50]}...'")
         return plaintext
     
     def encrypt_message(self, peer_id: str, plaintext: str) -> str:
@@ -288,21 +338,39 @@ class SessionManager:
         # Get or initialize ratchet
         ratchet = self._get_ratchet(session)
         
+        # Check if this is the first message (session has X3DH data)
+        is_first_message = session.x3dh_data is not None
+
         # Encrypt message
         ciphertext, header = ratchet.encrypt(plaintext)
-        
+
         # Update session with new ratchet state
         session.ratchet_state = ratchet.serialize_state()
-        self._save_session(session)
-        
-        # Create encrypted message payload
+
+        # Create encrypted message payload (Signal protocol format)
         payload = {
             "ciphertext": ciphertext,
             "header": header.to_dict(),
         }
-        
-        # Return with E2EE prefix
-        return f"E2EE:{json.dumps(payload)}"
+
+        # Add X3DH data if this is the first message
+        if is_first_message and session.x3dh_data:
+            logger.info(f"Adding X3DH data to first message for {peer_id}")
+            payload["x3dh"] = {
+                "senderIdentityKey": session.x3dh_data["localIdentityKey"],
+                "senderEphemeralKey": session.x3dh_data["localEphemeralKey"],
+                "usedSignedPrekeyId": session.x3dh_data["usedSignedPrekeyId"],
+                "usedOneTimePrekeyId": session.x3dh_data["usedOneTimePrekeyId"]
+            }
+
+            # Clear X3DH data after including it in first message
+            session.x3dh_data = None
+
+        # Save session (updates ratchet state and clears x3dh_data if needed)
+        self._save_session(session)
+
+        # Return as pure JSON (no E2EE: prefix) for compatibility with JS client
+        return json.dumps(payload)
     
     def decrypt_message(self, peer_id: str, encrypted_message: str) -> str:
         """
@@ -327,12 +395,16 @@ class SessionManager:
         if message.startswith("E2EE:"):
             message = message[5:]
         
+        logger.debug(f"Decrypting message from {peer_id}: {message[:80]}...")
+        
         # Parse encrypted payload
         try:
             payload = json.loads(message)
             ciphertext = payload["ciphertext"]
             header = RatchetHeader.from_dict(payload["header"])
+            logger.debug(f"Parsed payload: ciphertext={ciphertext[:30]}..., header={header.to_dict()}")
         except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Invalid encrypted message format: {e}")
             raise WhatsAppClientError(f"Invalid encrypted message format: {e}")
         
         # Get or initialize ratchet
@@ -343,7 +415,9 @@ class SessionManager:
         
         if plaintext is None:
             # Decrypt with current ratchet state
+            logger.debug(f"Attempting to decrypt with current ratchet state...")
             plaintext = ratchet.decrypt(ciphertext, header)
+            logger.info(f"Successfully decrypted message from {peer_id}: '{plaintext[:50]}...'")
         
         # Update session with new ratchet state
         session.ratchet_state = ratchet.serialize_state()
@@ -428,6 +502,7 @@ class SessionManager:
             "created_at": session.created_at,
             "one_time_prekey_used": session.one_time_prekey_used,
             "ratchet_state": session.ratchet_state,
+            "x3dh_data": session.x3dh_data,
         }
         
         with open(session_file, 'w') as f:
@@ -458,6 +533,7 @@ class SessionManager:
                 created_at=session_data["created_at"],
                 one_time_prekey_used=session_data.get("one_time_prekey_used"),
                 ratchet_state=session_data.get("ratchet_state"),
+                x3dh_data=session_data.get("x3dh_data"),
             )
             
             logger.debug(f"Loaded session from {session_file}")

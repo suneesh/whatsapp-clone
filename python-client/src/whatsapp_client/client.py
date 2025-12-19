@@ -420,14 +420,26 @@ class WhatsAppClient:
 
         bundle = self._key_manager.get_public_bundle()
 
-        # Prepare upload data
+        # Prepare upload data - server expects specific structure
         upload_data = {
             "identityKey": bundle.identity_key,
             "signingKey": bundle.signing_key,
             "fingerprint": bundle.fingerprint,
-            "signedPrekey": bundle.signed_prekey,
-            "oneTimePrekeys": bundle.one_time_prekeys,
         }
+
+        # Add signed prekey if available
+        if bundle.signed_prekey and bundle.signature and bundle.signed_prekey_id is not None:
+            upload_data["signedPrekey"] = {
+                "keyId": bundle.signed_prekey_id,
+                "publicKey": bundle.signed_prekey,
+                "signature": bundle.signature,
+            }
+        else:
+            upload_data["signedPrekey"] = None
+
+        # Add one-time prekeys if available
+        # get_public_bundle now returns list of {keyId, publicKey} dicts
+        upload_data["oneTimePrekeys"] = bundle.one_time_prekeys if bundle.one_time_prekeys else []
 
         try:
             response = await self._rest.post("/api/users/prekeys", data=upload_data)
@@ -496,13 +508,15 @@ class WhatsAppClient:
             signed_prekey_data = response.get("signedPrekey")
             if not signed_prekey_data:
                 raise WhatsAppClientError(f"No signed prekey available for {peer_id}")
-            
+
             # Extract one-time prekey if available
             one_time_prekey_data = response.get("oneTimePrekey")
             one_time_prekeys = []
+            one_time_prekey_id = None
             if one_time_prekey_data:
                 one_time_prekeys = [one_time_prekey_data["publicKey"]]
-            
+                one_time_prekey_id = one_time_prekey_data.get("keyId")
+
             # Parse response into PrekeyBundle
             bundle = PrekeyBundle(
                 identity_key=response["identityKey"],
@@ -510,7 +524,9 @@ class WhatsAppClient:
                 fingerprint=response["fingerprint"],
                 signed_prekey=signed_prekey_data["publicKey"],
                 signature=signed_prekey_data["signature"],
-                one_time_prekeys=one_time_prekeys
+                signed_prekey_id=signed_prekey_data.get("keyId"),
+                one_time_prekeys=one_time_prekeys,
+                one_time_prekey_id=one_time_prekey_id
             )
             
             return bundle
@@ -701,7 +717,12 @@ class WhatsAppClient:
             
             from_user = payload["from"]
             content = payload["content"]
-            
+
+            # Ignore messages from ourselves (echo bot shouldn't process its own replies)
+            if from_user == self.user_id:
+                logger.debug(f"Ignoring message from self: {from_user}")
+                return
+
             # Create Message object
             message = Message(
                 id=payload.get("id", str(uuid.uuid4())),
@@ -714,7 +735,18 @@ class WhatsAppClient:
             )
             
             # Decrypt if encrypted (check for Signal protocol format)
-            if payload.get("encrypted"):
+            # Note: Server might not always set encrypted=true correctly, so also check content format
+            content_is_encrypted_json = False
+            try:
+                encrypted_data = json.loads(content)
+                content_is_encrypted_json = "ciphertext" in encrypted_data and "header" in encrypted_data
+                if content_is_encrypted_json:
+                    logger.debug(f"Detected encrypted JSON content from {from_user}")
+            except json.JSONDecodeError:
+                pass
+            
+            if payload.get("encrypted") or content_is_encrypted_json:
+                logger.debug(f"Processing encrypted message from {from_user} (encrypted flag={payload.get('encrypted')}, is_encrypted_json={content_is_encrypted_json})")
                 try:
                     if not self._session_manager:
                         raise WhatsAppClientError("Session manager not initialized")
@@ -726,6 +758,7 @@ class WhatsAppClient:
                     
                     # Check if we already have a session with this peer
                     existing_session = self._session_manager.get_session(from_user)
+                    logger.debug(f"Session check: from_user={from_user}, existing_session={existing_session is not None}, has_x3dh={'x3dh' in encrypted_data}")
                     
                     if "x3dh" in encrypted_data and not existing_session:
                         # This is a first message from a new peer - process X3DH as responder
@@ -740,8 +773,28 @@ class WhatsAppClient:
                         )
                     elif existing_session:
                         # Session exists - decrypt with existing session
-                        message.content = self._session_manager.decrypt_message(from_user, content)
-                    else:
+                        # But first check if sender's message number is suspiciously low
+                        # (indicates they reset their encryption but we still have old session)
+                        sender_msg_num = encrypted_data.get("header", {}).get("messageNumber", 0)
+                        if sender_msg_num < 5 and existing_session.ratchet_state:
+                            our_receiving_num = existing_session.ratchet_state.get("receiving_message_number", 0)
+                            our_sending_num = existing_session.ratchet_state.get("sending_message_number", 0)
+                            # If sender is at msg 0-4 but we've sent/received many messages before,
+                            # they likely reset - delete our old session
+                            if our_receiving_num > 5 or our_sending_num > 5:
+                                logger.warning(
+                                    f"Session mismatch detected with {from_user}: "
+                                    f"sender at msg #{sender_msg_num}, we're at send:{our_sending_num}/recv:{our_receiving_num}. "
+                                    f"Deleting old session. Sender should include X3DH data in next message."
+                                )
+                                self._session_manager.delete_session(from_user)
+                                existing_session = None
+
+                        if existing_session:
+                            logger.debug(f"Decrypting with existing session for {from_user}")
+                            message.content = self._session_manager.decrypt_message(from_user, content)
+
+                    if not existing_session:
                         # No session and no X3DH data - cannot decrypt
                         # This happens when:
                         # 1. We restarted and lost our session

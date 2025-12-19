@@ -40,7 +40,11 @@ export class ChatRoom implements DurableObject {
 
     ws.addEventListener('message', async (event) => {
       try {
-        const data: WSMessage = JSON.parse(event.data as string);
+        const rawData = event.data as string;
+        console.log(`[WS] Raw message received: ${rawData.substring(0, 200)}${rawData.length > 200 ? '...' : ''}`);
+        
+        const data: WSMessage = JSON.parse(rawData);
+        console.log(`[WS] Received message type: ${data.type}, payload keys: ${Object.keys(data.payload || {}).join(', ')}`);
 
         switch (data.type) {
           case 'auth':
@@ -109,6 +113,12 @@ export class ChatRoom implements DurableObject {
 
           case 'message':
             if (session) {
+              console.log(`[Message] Session exists. Payload:`, data.payload);
+              if (!data.payload) {
+                console.error('[Message] ERROR: payload is undefined!');
+                throw new Error('Message payload is undefined');
+              }
+              console.log(`[Message] Full payload from ${session.userId}:`, JSON.stringify(data.payload, null, 2));
               const messageType = data.payload.messageType || 'text';
 
               // Check user permissions and status
@@ -160,7 +170,9 @@ export class ChatRoom implements DurableObject {
                   const parsed = JSON.parse(data.payload.content);
                   if (parsed && typeof parsed === 'object') {
                     const hasAesGcmFormat = parsed.ciphertext && parsed.iv && parsed.ephemeralPublicKey;
-                    const hasSignalFormat = parsed.header && parsed.ciphertext && typeof parsed.authTag !== 'undefined';
+                    // For Signal format: header and ciphertext MUST exist
+                    // authTag is optional (can be null/undefined for some implementations)
+                    const hasSignalFormat = parsed.header && parsed.ciphertext;
                     if (hasAesGcmFormat || hasSignalFormat) {
                       validatedEncrypted = true;
                     }
@@ -537,6 +549,11 @@ export class ChatRoom implements DurableObject {
             break;
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : '';
+        console.error('[WS] Message processing error:', errorMsg);
+        if (errorStack) console.error('[WS] Stack:', errorStack);
+        console.error('[WS] Error type:', error instanceof Error ? error.constructor.name : typeof error);
         ws.send(JSON.stringify({
           type: 'error',
           payload: { message: 'Invalid message format' },

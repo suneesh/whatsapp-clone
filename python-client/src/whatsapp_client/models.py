@@ -107,7 +107,9 @@ class PrekeyBundle(BaseModel):
     fingerprint: str
     signed_prekey: str
     signature: str
-    one_time_prekeys: list[str] = []
+    signed_prekey_id: Optional[int] = None
+    one_time_prekeys: list = []  # Can be list[str] or list[dict] depending on context
+    one_time_prekey_id: Optional[int] = None
 
 
 class Session(BaseModel):
@@ -121,3 +123,4 @@ class Session(BaseModel):
     created_at: str
     one_time_prekey_used: Optional[str] = None
     ratchet_state: Optional[dict] = None  # Serialized ratchet state
+    x3dh_data: Optional[dict] = None  # X3DH data for first message (cleared after first send)

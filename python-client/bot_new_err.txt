@@ -1,0 +1,67 @@
+2025-12-19 22:06:04,929 - asyncio - DEBUG - Using proactor: IocpProactor
+2025-12-19 22:06:04,937 - __main__ - INFO - Using storage path: C:\Users\Quest\.whatsapp_clone\echobot_test
+2025-12-19 22:06:04,941 - whatsapp_client.client - INFO - Initializing WhatsAppClient (server: https://whatsapp-clone-worker.hi-suneesh.workers.dev)
+2025-12-19 22:06:04,942 - __main__ - INFO - Registering as echobot_test...
+2025-12-19 22:06:04,943 - whatsapp_client.auth.manager - INFO - Registering new user: echobot_test
+2025-12-19 22:06:04,945 - whatsapp_client.transport.rest - DEBUG - POST https://whatsapp-clone-worker.hi-suneesh.workers.dev/api/auth/register
+2025-12-19 22:06:05,943 - whatsapp_client.transport.rest - DEBUG - Response status: 201
+2025-12-19 22:06:05,944 - whatsapp_client.auth.manager - INFO - Successfully registered user: echobot_test (ID: 4db80125-0033-4421-b9a2-c026cdcf4e0f)
+2025-12-19 22:06:05,945 - whatsapp_client.client - INFO - Initializing cryptographic keys...
+2025-12-19 22:06:05,946 - whatsapp_client.storage.keys - DEBUG - Initialized key storage at C:\Users\Quest\.whatsapp_clone\echobot_test\4db80125-0033-4421-b9a2-c026cdcf4e0f_keys.json
+2025-12-19 22:06:05,947 - whatsapp_client.crypto.key_manager - INFO - Initialized KeyManager for user 4db80125-0033-4421-b9a2-c026cdcf4e0f
+2025-12-19 22:06:05,947 - whatsapp_client.crypto.key_manager - INFO - Initializing cryptographic keys...
+2025-12-19 22:06:05,948 - whatsapp_client.crypto.key_manager - INFO - Generating new keys...
+2025-12-19 22:06:05,948 - whatsapp_client.crypto.key_manager - INFO - Generating identity key pair (Curve25519)...
+2025-12-19 22:06:05,949 - whatsapp_client.crypto.key_manager - INFO - Generating signing key pair (Ed25519)...
+2025-12-19 22:06:05,950 - whatsapp_client.crypto.key_manager - INFO - Identity and signing keys generated successfully
+2025-12-19 22:06:05,950 - whatsapp_client.crypto.key_manager - INFO - Generating prekey bundle (1 signed + 100 one-time)...
+2025-12-19 22:06:05,963 - whatsapp_client.crypto.key_manager - INFO - Generated 100 one-time prekeys and 1 signed prekey
+2025-12-19 22:06:06,124 - whatsapp_client.storage.keys - INFO - Saved encrypted keys to C:\Users\Quest\.whatsapp_clone\echobot_test\4db80125-0033-4421-b9a2-c026cdcf4e0f_keys.json
+2025-12-19 22:06:06,124 - whatsapp_client.crypto.key_manager - INFO - Keys saved to encrypted storage
+2025-12-19 22:06:06,124 - whatsapp_client.crypto.key_manager - INFO - Cryptographic keys initialized
+2025-12-19 22:06:06,125 - whatsapp_client.crypto.session_manager - INFO - SessionManager initialized for user 4db80125-0033-4421-b9a2-c026cdcf4e0f
+2025-12-19 22:06:06,157 - whatsapp_client.storage.messages - DEBUG - Initialized message database: C:\Users\Quest\.whatsapp_clone\echobot_test\4db80125-0033-4421-b9a2-c026cdcf4e0f_messages.db
+2025-12-19 22:06:06,167 - whatsapp_client.storage.fingerprints - DEBUG - Initialized fingerprint storage at 4db80125-0033-4421-b9a2-c026cdcf4e0f\fingerprints.db
+2025-12-19 22:06:06,186 - whatsapp_client.storage.groups - DEBUG - Group storage tables initialized
+2025-12-19 22:06:06,188 - whatsapp_client.storage.groups - DEBUG - Initialized group storage at C:\Users\Quest\.whatsapp_clone\echobot_test\groups.db
+2025-12-19 22:06:06,188 - whatsapp_client.client - INFO - Uploading public key bundle to server...
+2025-12-19 22:06:06,188 - whatsapp_client.transport.rest - DEBUG - POST https://whatsapp-clone-worker.hi-suneesh.workers.dev/api/users/prekeys
+2025-12-19 22:06:07,288 - whatsapp_client.transport.rest - DEBUG - Response status: 200
+2025-12-19 22:06:07,289 - whatsapp_client.client - INFO - Uploaded keys: signed=True, one-time=100
+2025-12-19 22:06:07,290 - whatsapp_client.client - INFO - Connecting to WebSocket...
+2025-12-19 22:06:07,290 - whatsapp_client.transport.websocket - INFO - Connecting to WebSocket: wss://whatsapp-clone-worker.hi-suneesh.workers.dev/ws
+2025-12-19 22:06:07,464 - websockets.client - DEBUG - = connection is CONNECTING
+2025-12-19 22:06:07,692 - websockets.client - DEBUG - > GET /ws HTTP/1.1
+2025-12-19 22:06:07,693 - websockets.client - DEBUG - > Host: whatsapp-clone-worker.hi-suneesh.workers.dev
+2025-12-19 22:06:07,694 - websockets.client - DEBUG - > Upgrade: websocket
+2025-12-19 22:06:07,695 - websockets.client - DEBUG - > Connection: Upgrade
+2025-12-19 22:06:07,695 - websockets.client - DEBUG - > Sec-WebSocket-Key: 8+1Nbk9m3i0q93CYFUU0Yg==
+2025-12-19 22:06:07,696 - websockets.client - DEBUG - > Sec-WebSocket-Version: 13
+2025-12-19 22:06:07,696 - websockets.client - DEBUG - > Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+2025-12-19 22:06:07,697 - websockets.client - DEBUG - > User-Agent: Python/3.13 websockets/15.0.1
+2025-12-19 22:06:08,090 - websockets.client - DEBUG - < HTTP/1.1 101 Switching Protocols
+2025-12-19 22:06:08,091 - websockets.client - DEBUG - < Date: Fri, 19 Dec 2025 16:36:08 GMT
+2025-12-19 22:06:08,091 - websockets.client - DEBUG - < Connection: upgrade
+2025-12-19 22:06:08,091 - websockets.client - DEBUG - < Upgrade: websocket
+2025-12-19 22:06:08,092 - websockets.client - DEBUG - < Sec-WebSocket-Accept: HVLgmPYqQQITgrDNE24Jw4t8PBg=
+2025-12-19 22:06:08,092 - websockets.client - DEBUG - < Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits=15
+2025-12-19 22:06:08,092 - websockets.client - DEBUG - < Report-To: {"endpoints":[{"url":"https:\/\/a.nel.cloudflare.com\/report\/v4?s=54NH%2Ba2CbkaaZPq8EQvMIf8Y2u1OPk3ZLNApP1MDmZLeSEBXF0y1HkByXtpp9WYaO7pz8iu%2FDoH5%2FJSFFnS%2Fm9v51lPWUTnc%2Bo0ZKMEDHEhSOo%2Bkn6WBfxQzoIbul%2Bi%2FLppOK18JeFVESu9otNEqUZMm7HGtfhswWPJp8s52dg%3D%3D"}],"group":"cf-nel","max_age":604800}
+2025-12-19 22:06:08,092 - websockets.client - DEBUG - < NEL: {"success_fraction":0,"report_to":"cf-nel","max_age":604800}
+2025-12-19 22:06:08,093 - websockets.client - DEBUG - < Server: cloudflare
+2025-12-19 22:06:08,093 - websockets.client - DEBUG - < CF-RAY: 9b08512dd866dbe7-FRA
+2025-12-19 22:06:08,093 - websockets.client - DEBUG - < alt-svc: h3=":443"; ma=86400
+2025-12-19 22:06:08,094 - websockets.client - DEBUG - = connection is OPEN
+2025-12-19 22:06:08,094 - whatsapp_client.transport.websocket - DEBUG - Sending WebSocket message: auth
+2025-12-19 22:06:08,094 - websockets.client - DEBUG - > TEXT '{"type": "auth", "payload": {"userId": "4db8012...name": "echobot_test"}}' [107 bytes]
+2025-12-19 22:06:08,095 - whatsapp_client.transport.websocket - DEBUG - Sent WebSocket message: auth
+2025-12-19 22:06:08,095 - whatsapp_client.transport.websocket - DEBUG - Sent auth message for user 4db80125-0033-4421-b9a2-c026cdcf4e0f (echobot_test)
+2025-12-19 22:06:08,095 - whatsapp_client.transport.websocket - INFO - WebSocket connected successfully
+2025-12-19 22:06:08,095 - whatsapp_client.client - INFO - Registration successful for user: echobot_test
+2025-12-19 22:06:08,095 - __main__ - INFO - Registered new user: echobot_test
+2025-12-19 22:06:08,095 - __main__ - INFO - Echo bot started. Waiting for messages...
+2025-12-19 22:06:08,444 - websockets.client - DEBUG - < TEXT '{"type":"online","payload":{"users":[{"userId":...test","online":true}]}}' [214 bytes]
+2025-12-19 22:06:08,445 - whatsapp_client.transport.websocket - DEBUG - Unknown message type: online
+2025-12-19 22:06:38,098 - websockets.client - DEBUG - > PING da 40 d7 c4 [binary, 4 bytes]
+2025-12-19 22:06:38,100 - websockets.client - DEBUG - % sent keepalive ping
+2025-12-19 22:06:38,260 - websockets.client - DEBUG - < PONG da 40 d7 c4 [binary, 4 bytes]
+2025-12-19 22:06:38,261 - websockets.client - DEBUG - % received keepalive pong

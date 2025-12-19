@@ -20,7 +20,7 @@ from whatsapp_client import AsyncClient
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -99,11 +99,13 @@ async def main():
                     f"Could not decrypt message from {message.from_user}. "
                     "They may need to reset their encryption (the sender should go to Settings > Reset Encryption)."
                 )
+                logger.warning(f"Encrypted content: {message.content[:100]}...")
                 return
             
             # Send echo response
             try:
                 echo_response = f"Echo: {message.content}"
+                logger.info(f"Attempting to send echo response: {echo_response}")
                 response = await client.send_message(
                     message.from_user,
                     echo_response,
@@ -111,6 +113,8 @@ async def main():
                 logger.info(f"Sent response: {response.id}")
             except Exception as e:
                 logger.error(f"Failed to send response: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Keep running
         logger.info("Echo bot started. Waiting for messages...")

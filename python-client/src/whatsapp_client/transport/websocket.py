@@ -300,6 +300,13 @@ class WebSocketClient:
         
         try:
             data = json.dumps(message)
+            logger.debug(f"Sending WebSocket message: {message.get('type')}")
+            if message.get('type') == 'message':
+                # Log message details for debugging
+                payload = message.get('payload', {})
+                logger.debug(f"  - to: {payload.get('to')}")
+                logger.debug(f"  - encrypted: {payload.get('encrypted')}")
+                logger.debug(f"  - content (first 100 chars): {payload.get('content', '')[:100]}")
             await self._ws.send(data)
             logger.debug(f"Sent WebSocket message: {message.get('type')}")
         except Exception as e:
@@ -366,7 +373,15 @@ class WebSocketClient:
                     await handler(data)
                 except Exception as e:
                     logger.error(f"Presence handler error: {e}")
-        
+
+        elif msg_type == "read":
+            # Read receipts - treat as status updates
+            for handler in self._status_handlers:
+                try:
+                    await handler(data)
+                except Exception as e:
+                    logger.error(f"Read receipt handler error: {e}")
+
         else:
             logger.debug(f"Unknown message type: {msg_type}")
     

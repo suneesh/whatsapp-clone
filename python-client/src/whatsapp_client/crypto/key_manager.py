@@ -32,30 +32,39 @@ class KeyPair:
 
 class PrekeyBundle:
     """Prekey bundle for X3DH protocol."""
-    
+
     def __init__(
         self,
         identity_key: str,
         signing_key: str,
         fingerprint: str,
-        signed_prekey: Optional[Dict[str, Any]] = None,
-        one_time_prekeys: Optional[List[Dict[str, Any]]] = None
+        signed_prekey: Optional[str] = None,
+        signature: Optional[str] = None,
+        signed_prekey_id: Optional[int] = None,
+        one_time_prekeys: Optional[List[str]] = None,
+        one_time_prekey_id: Optional[int] = None
     ):
         """
         Initialize prekey bundle.
-        
+
         Args:
             identity_key: Base64 encoded identity public key
             signing_key: Base64 encoded signing public key
             fingerprint: Key fingerprint
-            signed_prekey: Signed prekey data
-            one_time_prekeys: List of one-time prekeys
+            signed_prekey: Base64 encoded signed prekey public key
+            signature: Signature of the signed prekey
+            signed_prekey_id: ID of the signed prekey
+            one_time_prekeys: List of base64 encoded one-time prekeys
+            one_time_prekey_id: ID of the one-time prekey (if provided)
         """
         self.identity_key = identity_key
         self.signing_key = signing_key
         self.fingerprint = fingerprint
         self.signed_prekey = signed_prekey
+        self.signature = signature
+        self.signed_prekey_id = signed_prekey_id
         self.one_time_prekeys = one_time_prekeys or []
+        self.one_time_prekey_id = one_time_prekey_id
 
 
 class KeyManager:
@@ -285,29 +294,30 @@ class KeyManager:
             raise ValidationError("Keys not initialized")
         
         # Prepare signed prekey (without private key)
-        signed_prekey = None
+        signed_prekey_key = None
+        signed_prekey_sig = None
+        signed_prekey_id = None
         if self._signed_prekey:
-            signed_prekey = {
-                "keyId": self._signed_prekey["keyId"],
-                "publicKey": self._signed_prekey["publicKey"],
-                "signature": self._signed_prekey["signature"],
-            }
-        
+            signed_prekey_key = self._signed_prekey["publicKey"]
+            signed_prekey_sig = self._signed_prekey["signature"]
+            signed_prekey_id = self._signed_prekey["keyId"]
+
         # Prepare one-time prekeys (without private keys)
-        one_time_prekeys = [
-            {
-                "keyId": prekey["keyId"],
-                "publicKey": prekey["publicKey"],
-            }
+        # Return list of {keyId, publicKey} dicts for server upload
+        one_time_prekey_list = [
+            {"keyId": prekey["keyId"], "publicKey": prekey["publicKey"]}
             for prekey in self._one_time_prekeys
         ]
-        
+
         return PrekeyBundle(
             identity_key=encode_base64(self._identity_keypair.public_key),
             signing_key=encode_base64(self._signing_keypair.public_key),
             fingerprint=self.get_fingerprint(),
-            signed_prekey=signed_prekey,
-            one_time_prekeys=one_time_prekeys,
+            signed_prekey=signed_prekey_key,
+            signature=signed_prekey_sig,
+            signed_prekey_id=signed_prekey_id,
+            one_time_prekeys=one_time_prekey_list,
+            one_time_prekey_id=None,  # Not used when returning full list
         )
     
     def get_identity_keypair(self) -> KeyPair:
