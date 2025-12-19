@@ -230,9 +230,9 @@ class X3DHProtocol:
         Verify the signature of a signed prekey.
         
         Args:
-            signed_prekey: Hex-encoded signed prekey
-            signature: Hex-encoded signature
-            signing_key: Hex-encoded signing public key
+            signed_prekey: Base64 or hex-encoded signed prekey
+            signature: Base64 or hex-encoded signature
+            signing_key: Base64 or hex-encoded signing public key
             
         Returns:
             True if signature is valid, False otherwise
@@ -240,10 +240,24 @@ class X3DHProtocol:
         try:
             from nacl.signing import VerifyKey
             from nacl.encoding import RawEncoder
+            import base64
+            import re
             
-            verify_key = VerifyKey(bytes.fromhex(signing_key), encoder=RawEncoder)
-            signed_prekey_bytes = bytes.fromhex(signed_prekey)
-            signature_bytes = bytes.fromhex(signature)
+            # Detect if string is hex (only 0-9, a-f, A-F) or base64
+            is_hex = bool(re.match(r'^[0-9a-fA-F]+$', signing_key))
+            
+            if is_hex:
+                # Hex decoding
+                verify_key_bytes = bytes.fromhex(signing_key)
+                signed_prekey_bytes = bytes.fromhex(signed_prekey)
+                signature_bytes = bytes.fromhex(signature)
+            else:
+                # Base64 decoding (server format)
+                verify_key_bytes = base64.b64decode(signing_key)
+                signed_prekey_bytes = base64.b64decode(signed_prekey)
+                signature_bytes = base64.b64decode(signature)
+            
+            verify_key = VerifyKey(verify_key_bytes, encoder=RawEncoder)
             
             # Verify signature
             verify_key.verify(signed_prekey_bytes, signature_bytes)
