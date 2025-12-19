@@ -346,9 +346,16 @@ async def test_client_ensure_session_integration(temp_storage):
         "identityKey": "a" * 64,
         "signingKey": "b" * 64,
         "fingerprint": "c" * 60,
-        "signedPrekey": "d" * 64,
-        "signature": "e" * 128,
-        "oneTimePrekeys": ["f" * 64, "g" * 64]
+        "signedPrekey": {
+            "keyId": 1,
+            "publicKey": "d" * 64,
+            "signature": "e" * 128,
+            "createdAt": 1234567890,
+        },
+        "oneTimePrekey": {
+            "keyId": 1,
+            "publicKey": "f" * 64,
+        }
     }
     
     with patch.object(client._rest, "post", new=AsyncMock(side_effect=[mock_user, mock_upload_response])):

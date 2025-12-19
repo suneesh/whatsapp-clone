@@ -492,14 +492,25 @@ class WhatsAppClient:
             if "error" in response:
                 raise WhatsAppClientError(f"Failed to fetch prekey bundle: {response['error']}")
             
+            # Extract signed prekey data
+            signed_prekey_data = response.get("signedPrekey")
+            if not signed_prekey_data:
+                raise WhatsAppClientError(f"No signed prekey available for {peer_id}")
+            
+            # Extract one-time prekey if available
+            one_time_prekey_data = response.get("oneTimePrekey")
+            one_time_prekeys = []
+            if one_time_prekey_data:
+                one_time_prekeys = [one_time_prekey_data["publicKey"]]
+            
             # Parse response into PrekeyBundle
             bundle = PrekeyBundle(
                 identity_key=response["identityKey"],
                 signing_key=response["signingKey"],
                 fingerprint=response["fingerprint"],
-                signed_prekey=response["signedPrekey"],
-                signature=response["signature"],
-                one_time_prekeys=response.get("oneTimePrekeys", [])
+                signed_prekey=signed_prekey_data["publicKey"],
+                signature=signed_prekey_data["signature"],
+                one_time_prekeys=one_time_prekeys
             )
             
             return bundle
