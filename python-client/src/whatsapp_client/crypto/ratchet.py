@@ -149,7 +149,9 @@ class RatchetEngine:
         
         # Match JavaScript: first derive root key and initial chain key from shared secret
         # JS: kdfRootKey(sharedSecret, new Uint8Array(32))
-        initial_root_key, initial_chain_key = self._kdf_rk(bytes(32), shared_secret)
+        # In kdfRootKey: hkdf(dhOutput, { salt: rootKey, ... })
+        # So: hkdf(zeros, { salt: sharedSecret, ... })
+        initial_root_key, initial_chain_key = self._kdf_rk(shared_secret, bytes(32))
         
         # Set up state like JavaScript does
         self.state.root_key = initial_root_key
@@ -229,12 +231,22 @@ class RatchetEngine:
         
         # Decode ratchet key - could be base64 or hex
         remote_dh_key = header.dh_public_key
+        remote_dh_bytes = None
+        
+        # Try base64 first (Signal protocol format from server)
         try:
-            # Try base64 first (Signal protocol format)
-            remote_dh_bytes = base64.b64decode(remote_dh_key)
-        except:
-            # Fall back to hex (legacy format)
-            remote_dh_bytes = bytes.fromhex(remote_dh_key)
+            decoded = base64.b64decode(remote_dh_key)
+            if len(decoded) == 32:  # Valid 32-byte key
+                remote_dh_bytes = decoded
+        except Exception:
+            pass
+        
+        # Try hex if base64 didn't work (legacy/test format)
+        if remote_dh_bytes is None:
+            try:
+                remote_dh_bytes = bytes.fromhex(remote_dh_key)
+            except Exception as e:
+                raise WhatsAppClientError(f"Invalid ratchet key format: {e}")
         
         # Check if we need to perform DH ratchet
         current_remote_dh_bytes = bytes(self.state.dh_remote) if self.state.dh_remote else None

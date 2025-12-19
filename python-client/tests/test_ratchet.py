@@ -25,11 +25,11 @@ def test_ratchet_header_serialization():
         message_number=10,
     )
     
-    # Serialize
+    # Serialize (Signal protocol format)
     data = header.to_dict()
-    assert data["dh"] == "a" * 64
-    assert data["pn"] == 5
-    assert data["n"] == 10
+    assert data["ratchetKey"] == "a" * 64
+    assert data["previousChainLength"] == 5
+    assert data["messageNumber"] == 10
     
     # Deserialize
     header2 = RatchetHeader.from_dict(data)
