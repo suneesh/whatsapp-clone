@@ -738,14 +738,21 @@ class WhatsAppClient:
                             get_signed_prekey_callback=self._get_signed_prekey,
                             get_one_time_prekey_callback=self._get_one_time_prekey,
                         )
-                    else:
-                        # Session exists or no X3DH data - use existing session or establish new one
-                        if not existing_session:
-                            logger.info(f"No session with {from_user}, establishing one before decryption")
-                            await self.ensure_session(from_user)
-                        
-                        # Decrypt with existing/established session
+                    elif existing_session:
+                        # Session exists - decrypt with existing session
                         message.content = self._session_manager.decrypt_message(from_user, content)
+                    else:
+                        # No session and no X3DH data - cannot decrypt
+                        # This happens when:
+                        # 1. We restarted and lost our session
+                        # 2. The sender has an old session with us
+                        # 3. The sender needs to reset their encryption
+                        logger.warning(
+                            f"Cannot decrypt message from {from_user}: no session and no X3DH data. "
+                            "The sender may need to reset their encryption."
+                        )
+                        # Keep the encrypted content - don't try to establish a new session
+                        # as it won't match what the sender used
                         
                 except json.JSONDecodeError:
                     # Not JSON, might be legacy E2EE: format

@@ -14,6 +14,8 @@ Usage:
 import asyncio
 import argparse
 import logging
+import os
+from pathlib import Path
 from whatsapp_client import AsyncClient
 
 # Configure logging
@@ -22,6 +24,15 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def get_storage_path(bot_name: str) -> str:
+    """Get cross-platform storage path for bot data."""
+    # Use user's home directory for persistent storage
+    home = Path.home()
+    storage_dir = home / ".whatsapp_clone" / bot_name
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    return str(storage_dir)
 
 
 async def main():
@@ -42,12 +53,21 @@ async def main():
         default="bot_password",
         help="Bot password (default: bot_password)",
     )
+    parser.add_argument(
+        "--storage",
+        default=None,
+        help="Storage path (default: ~/.whatsapp_clone/<username>)",
+    )
     
     args = parser.parse_args()
     
+    # Use provided storage path or default to user's home directory
+    storage_path = args.storage or get_storage_path(args.user)
+    logger.info(f"Using storage path: {storage_path}")
+    
     async with AsyncClient(
         server_url=args.server,
-        storage_path="/tmp/whatsapp_echobot",
+        storage_path=storage_path,
     ) as client:
         # Register or login
         try:
@@ -72,13 +92,25 @@ async def main():
                 f"[{message_count}] Message from {message.from_user}: {message.content}"
             )
             
+            # Check if message was decrypted successfully
+            # (failed decryption leaves the raw encrypted content)
+            if message.content.startswith('{') and '"ciphertext"' in message.content:
+                logger.warning(
+                    f"Could not decrypt message from {message.from_user}. "
+                    "They may need to reset their encryption (the sender should go to Settings > Reset Encryption)."
+                )
+                return
+            
             # Send echo response
-            echo_response = f"Echo: {message.content}"
-            response = await client.send_message(
-                message.from_user,
-                echo_response,
-            )
-            logger.info(f"Sent response: {response.id}")
+            try:
+                echo_response = f"Echo: {message.content}"
+                response = await client.send_message(
+                    message.from_user,
+                    echo_response,
+                )
+                logger.info(f"Sent response: {response.id}")
+            except Exception as e:
+                logger.error(f"Failed to send response: {e}")
         
         # Keep running
         logger.info("Echo bot started. Waiting for messages...")
