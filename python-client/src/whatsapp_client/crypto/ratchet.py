@@ -251,25 +251,16 @@ class RatchetEngine:
         
         # Decrypt message
         try:
-            # Decode ciphertext
+            # Decode ciphertext from base64
             if isinstance(ciphertext_b64, bytes):
                 ciphertext_bytes = ciphertext_b64
             else:
-                ciphertext_bytes = base64.b64decode(ciphertext_b64.encode('ascii'))
+                ciphertext_bytes = base64.b64decode(ciphertext_b64)
             
-            # Signal protocol format: separate nonce, ciphertext, authTag
-            # NaCl secretbox.open expects: nonce (24 bytes) + ciphertext + tag (16 bytes)
-            if auth_tag is not None:
-                # Reconstruct NaCl format: nonce + ciphertext + auth_tag
-                # The ciphertext from Signal format contains: nonce (24 bytes) + actual_ciphertext
-                # auth_tag is the Poly1305 MAC (16 bytes)
-                full_box = ciphertext_bytes + auth_tag
-            else:
-                # Legacy format: already includes nonce + ciphertext + tag
-                full_box = ciphertext_bytes
-            
+            # JavaScript format: nonce (24 bytes) + ciphertext + MAC (16 bytes)
+            # PyNaCl SecretBox.decrypt expects the same format
             box = SecretBox(message_key)
-            plaintext_bytes = box.decrypt(full_box)
+            plaintext_bytes = box.decrypt(ciphertext_bytes)
             return plaintext_bytes.decode('utf-8')
         except Exception as e:
             raise WhatsAppClientError(f"Decryption failed: {e}")
