@@ -306,7 +306,7 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
   }, [manager, userId, token, syncPrekeys]);
 
   const resetE2EE = useCallback(async () => {
-    if (!manager || !userId) {
+    if (!manager || !userId || !token) {
       throw new Error('E2EE not initialized');
     }
 
@@ -325,8 +325,8 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
       const identity = await manager.getIdentityMaterial();
       setFingerprint(identity.fingerprint);
       
-      // Recreate session manager
-      const sm = new SessionManager(userId, manager);
+      // Recreate session manager with token
+      const sm = new SessionManager(userId, manager, token);
       setSessionManager(sm);
       
       // Clear session states
@@ -341,7 +341,7 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
     } finally {
       setInitializing(false);
     }
-  }, [manager, userId, syncPrekeys]);
+  }, [manager, userId, token, syncPrekeys]);
 
   return {
     ready,
