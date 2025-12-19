@@ -105,6 +105,21 @@ function App() {
   const handleMessage = useCallback(async (message: Message) => {
     console.log('[App] Received message:', { id: message.id, from: message.from, encrypted: message.encrypted, contentPreview: message.content.substring(0, 50) });
     
+    // Skip decryption for own messages - we already have the plaintext
+    if (message.from === currentUser?.id) {
+      // For own messages, check if we already have it (with plaintext)
+      setMessages((prev) => {
+        const exists = prev.find((m) => m.id === message.id);
+        if (exists) {
+          // Keep the existing message (which has plaintext), just update status
+          return prev.map((m) => (m.id === message.id ? { ...m, status: message.status } : m));
+        }
+        // If somehow we don't have it, add it (but this shouldn't happen)
+        return [...prev, message];
+      });
+      return;
+    }
+    
     // Decrypt if encrypted (check server-validated encrypted flag)
     let decryptedMessage = message;
     if (message.encrypted && message.type === 'text') {
@@ -142,7 +157,7 @@ function App() {
       console.log('[App] Adding new message:', decryptedMessage.id);
       return [...prev, decryptedMessage];
     });
-  }, [decryptMessage]);
+  }, [currentUser?.id, decryptMessage]);
 
   const handleTyping = useCallback((userId: string, typing: boolean) => {
     setTypingUsers((prev) => {
