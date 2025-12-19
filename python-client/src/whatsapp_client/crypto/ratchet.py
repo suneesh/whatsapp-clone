@@ -139,23 +139,31 @@ class RatchetEngine:
         This is called when processing a first message from someone else.
         We receive their initial ratchet key from the message header.
         
+        Must match JavaScript's initializeRatchet(sharedSecret, remoteRatchetKey).
+        
         Args:
             shared_secret: Shared secret from X3DH respond
             remote_ratchet_key: Sender's ratchet public key from message header
         """
         import base64
         
-        # Set root key from shared secret
-        self.state.root_key = shared_secret
+        # Match JavaScript: first derive root key and initial chain key from shared secret
+        # JS: kdfRootKey(sharedSecret, new Uint8Array(32))
+        initial_root_key, initial_chain_key = self._kdf_rk(bytes(32), shared_secret)
+        
+        # Set up state like JavaScript does
+        self.state.root_key = initial_root_key
+        self.state.receiving_chain_key = initial_chain_key
+        self.state.receiving_message_number = 0
         
         # Parse remote's ratchet key
         self.state.dh_remote = PublicKey(remote_ratchet_key, encoder=RawEncoder)
         
-        # Generate our own DH key pair
+        # Generate our own DH key pair (needed for future sends)
         self.state.dh_self = PrivateKey.generate()
         
-        # Perform DH ratchet to derive receiving chain
-        self._dh_ratchet_receive(self.state.dh_remote)
+        # Note: JavaScript does NOT perform DH ratchet immediately!
+        # The DH ratchet happens during decryption when needsRatchet is true
     
     def encrypt(self, plaintext: str) -> Tuple[str, RatchetHeader]:
         """
@@ -392,11 +400,12 @@ class RatchetEngine:
             Tuple of (new_root_key, chain_key)
         """
         # Use HKDF to derive 64 bytes, split into root key and chain key
+        # Must match JavaScript: hkdf(dhOutput, { salt: rootKey, info: 'WhatsAppCloneRootKey', length: 64 })
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=64,
             salt=root_key,
-            info=b"WhatsAppCloneRatchet",
+            info=b"WhatsAppCloneRootKey",
         )
         output = hkdf.derive(dh_output)
         
@@ -413,9 +422,9 @@ class RatchetEngine:
         Returns:
             32-byte message key
         """
-        # Use HMAC-SHA256
+        # Use HMAC-SHA256 - must match JavaScript which uses 0x02 for message key
         import hmac
-        return hmac.digest(chain_key, b"\x01", hashlib.sha256)
+        return hmac.digest(chain_key, b"\x02", hashlib.sha256)
     
     @staticmethod
     def _advance_chain_key(chain_key: bytes) -> bytes:
@@ -428,9 +437,9 @@ class RatchetEngine:
         Returns:
             Next chain key
         """
-        # Use HMAC-SHA256
+        # Use HMAC-SHA256 - must match JavaScript which uses 0x01 for chain key
         import hmac
-        return hmac.digest(chain_key, b"\x02", hashlib.sha256)
+        return hmac.digest(chain_key, b"\x01", hashlib.sha256)
     
     def serialize_state(self) -> dict:
         """
