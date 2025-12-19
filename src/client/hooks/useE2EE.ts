@@ -36,12 +36,12 @@ interface PrekeyStatusResponse {
 const SERVER_PREKEY_MINIMUM = 20;
 const STATUS_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
-async function uploadBundle(userId: string, bundle: PrekeyBundlePayload): Promise<void> {
+async function uploadBundle(token: string, bundle: PrekeyBundlePayload): Promise<void> {
   const response = await apiFetch('/api/users/prekeys', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${userId}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(bundle),
   });
@@ -52,11 +52,11 @@ async function uploadBundle(userId: string, bundle: PrekeyBundlePayload): Promis
   }
 }
 
-async function fetchPrekeyStatus(userId: string): Promise<PrekeyStatusResponse> {
+async function fetchPrekeyStatus(token: string): Promise<PrekeyStatusResponse> {
   const response = await apiFetch('/api/users/prekeys/status', {
     method: 'GET',
     headers: {
-      Authorization: `Bearer ${userId}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -73,7 +73,7 @@ async function fetchPrekeyStatus(userId: string): Promise<PrekeyStatusResponse> 
   };
 }
 
-export function useE2EE(userId: string | undefined): UseE2EEResult {
+export function useE2EE(userId: string | undefined, token: string | undefined): UseE2EEResult {
   const [manager, setManager] = useState<KeyManager | null>(null);
   const [initializing, setInitializing] = useState(false);
   const [ready, setReady] = useState(false);
@@ -95,14 +95,14 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
         return;
       }
 
-      if (!userId) {
+      if (!token) {
         return;
       }
 
-      await uploadBundle(userId, bundle);
+      await uploadBundle(token, bundle);
       await km.markBundleUploaded(bundle);
     },
-    [userId]
+    [token]
   );
 
   const sessionRecordToView = useCallback((record: StoredSessionRecord): SessionViewState => {
@@ -257,7 +257,7 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
   );
 
   useEffect(() => {
-    if (!manager || !userId || typeof window === 'undefined') {
+    if (!manager || !userId || !token || typeof window === 'undefined') {
       return;
     }
 
@@ -266,7 +266,7 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
 
     const evaluatePrekeyStatus = async () => {
       try {
-        const status = await fetchPrekeyStatus(userId);
+        const status = await fetchPrekeyStatus(token);
         let stagedNewMaterial = false;
 
         const deficit = ONE_TIME_PREKEY_TARGET - status.oneTimePrekeyCount;
@@ -303,7 +303,7 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
         window.clearInterval(intervalId);
       }
     };
-  }, [manager, userId, syncPrekeys]);
+  }, [manager, userId, token, syncPrekeys]);
 
   const resetE2EE = useCallback(async () => {
     if (!manager || !userId) {

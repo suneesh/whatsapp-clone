@@ -9,6 +9,7 @@ import { apiFetch } from './utils/api';
 interface User {
   id: string;
   username: string;
+  token?: string;
   avatar?: string;
   online?: boolean;
   role?: string;
@@ -50,7 +51,7 @@ function App() {
     encryptMessage,
     decryptMessage,
     resetE2EE,
-  } = useE2EE(currentUser?.id);
+  } = useE2EE(currentUser?.id, currentUser?.token);
 
   // Restore user from localStorage on app mount
   useEffect(() => {
@@ -77,6 +78,7 @@ function App() {
           const sanitizedUser: User = {
             id: user.id,
             username: user.username,
+            token: typeof user.token === 'string' ? user.token : undefined,
             avatar: typeof user.avatar === 'string' ? user.avatar : undefined,
             role: typeof user.role === 'string' ? user.role : undefined,
             is_active: typeof user.is_active === 'number' ? user.is_active : undefined,
