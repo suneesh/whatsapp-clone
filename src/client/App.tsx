@@ -126,6 +126,8 @@ function App() {
       try {
         console.log('[App] Message is encrypted, attempting decryption');
         console.log('[App] Encrypted content:', message.content.substring(0, 100));
+        // Ensure session with sender exists before decrypting
+        await ensureSession(message.from);
         // Content should be JSON with encrypted data
         const encryptedData = JSON.parse(message.content);
         console.log('[App] Parsed encrypted data, calling decryptMessage');
@@ -157,7 +159,7 @@ function App() {
       console.log('[App] Adding new message:', decryptedMessage.id);
       return [...prev, decryptedMessage];
     });
-  }, [currentUser?.id, decryptMessage]);
+  }, [currentUser?.id, decryptMessage, ensureSession]);
 
   const handleTyping = useCallback((userId: string, typing: boolean) => {
     setTypingUsers((prev) => {

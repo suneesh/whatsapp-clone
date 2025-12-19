@@ -674,6 +674,7 @@ class WhatsAppClient:
         self._ws = WebSocketClient(
             server_url=self.server_url,
             user_id=self.user_id,
+            username=self.user.username if self.user else None,
             auto_reconnect=True,
         )
         

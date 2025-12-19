@@ -34,6 +34,7 @@ class WebSocketClient:
         self,
         server_url: str,
         user_id: Optional[str] = None,
+        username: Optional[str] = None,
         auto_reconnect: bool = True,
     ):
         """
@@ -42,12 +43,14 @@ class WebSocketClient:
         Args:
             server_url: Base server URL (http/https)
             user_id: User ID for authentication
+            username: Username for authentication
             auto_reconnect: Enable automatic reconnection on disconnect
         """
         # Convert http/https to ws/wss
         ws_url = server_url.replace("http://", "ws://").replace("https://", "wss://")
         self.ws_url = f"{ws_url}/ws"
         self.user_id = user_id
+        self.username = username
         self.auto_reconnect = auto_reconnect
         
         # Connection state
@@ -273,10 +276,13 @@ class WebSocketClient:
         """Send authentication message."""
         auth_msg = {
             "type": "auth",
-            "userId": self.user_id,
+            "payload": {
+                "userId": self.user_id,
+                "username": self.username,
+            },
         }
         await self._send(auth_msg)
-        logger.debug(f"Sent auth message for user {self.user_id}")
+        logger.debug(f"Sent auth message for user {self.user_id} ({self.username})")
     
     async def _send(self, message: Dict[str, Any]) -> None:
         """
