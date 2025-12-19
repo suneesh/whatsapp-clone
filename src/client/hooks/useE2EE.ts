@@ -124,7 +124,10 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
     let cancelled = false;
 
     async function bootstrap() {
-      if (!userId) {
+      console.log('[E2EE] Bootstrap called with userId:', userId, 'token:', token ? token.substring(0, 20) + '...' : 'undefined');
+      
+      if (!userId || !token) {
+        console.log('[E2EE] Missing userId or token, skipping bootstrap');
         setManager(null);
         setFingerprint(null);
         setReady(false);
@@ -135,6 +138,7 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
       const km = new KeyManager(userId);
       try {
         await km.initialize();
+        console.log('[E2EE] KeyManager initialized, syncing prekeys with token:', token.substring(0, 20) + '...');
         await syncPrekeys(km);
         const userFingerprint = await km.getFingerprint();
         if (cancelled) {
@@ -165,11 +169,11 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
     return () => {
       cancelled = true;
     };
-  }, [userId, syncPrekeys]);
+  }, [userId, token, syncPrekeys]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!manager || !userId) {
+    if (!manager || !userId || !token) {
       setSessionManager(null);
       setSessions({});
       return () => {
@@ -177,7 +181,7 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
       };
     }
 
-    const sm = new SessionManager(userId, manager);
+    const sm = new SessionManager(userId, manager, token);
     setSessionManager(sm);
     sm.listSessions().then((records) => {
       if (cancelled) {
@@ -193,7 +197,7 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
     return () => {
       cancelled = true;
     };
-  }, [manager, userId, sessionRecordToView]);
+  }, [manager, userId, token, sessionRecordToView]);
 
   const ensureSession = useCallback(
     async (peerId: string) => {

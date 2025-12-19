@@ -21,7 +21,11 @@ export class SessionManager {
   private inFlight = new Map<string, Promise<StoredSessionRecord>>();
   private ratchetStates = new Map<string, RatchetState>();
 
-  constructor(private readonly userId: string, private readonly keyManager: KeyManager) {
+  constructor(
+    private readonly userId: string,
+    private readonly keyManager: KeyManager,
+    private readonly token: string
+  ) {
     this.storage = keyManager.getStorage();
     this.ratchetEngine = new RatchetEngine();
   }
@@ -116,7 +120,7 @@ export class SessionManager {
       const response = await apiFetch(`/api/users/${peerId}/prekeys`, {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${this.userId}`,
+          Authorization: `Bearer ${this.token}`,
         },
       });
 
