@@ -172,7 +172,7 @@ class WebSocketClient:
         self._state = ConnectionState.CLOSED
         await self.disconnect()
     
-    async def send_message(self, to: str, content: str, type: str = "text") -> None:
+    async def send_message(self, to: str, content: str, type: str = "text", encrypted: bool = False) -> None:
         """
         Send a message via WebSocket.
         
@@ -180,6 +180,7 @@ class WebSocketClient:
             to: Recipient user ID
             content: Message content (encrypted or plain)
             type: Message type (default: "text")
+            encrypted: Whether the content is encrypted (default: False)
             
         Raises:
             WhatsAppClientError: If not connected
@@ -189,9 +190,12 @@ class WebSocketClient:
         
         message = {
             "type": "message",
-            "to": to,
-            "content": content,
-            "messageType": type,
+            "payload": {
+                "to": to,
+                "content": content,
+                "messageType": type,
+                "encrypted": encrypted,
+            },
         }
         
         await self._send(message)

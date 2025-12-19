@@ -604,6 +604,8 @@ class WhatsAppClient:
             raise WhatsAppClientError("Not authenticated")
         if not self._session_manager:
             raise WhatsAppClientError("Session manager not initialized")
+        if not self._ws or not self._ws.is_connected:
+            raise WhatsAppClientError("WebSocket not connected")
         
         # Ensure session exists with recipient
         await self.ensure_session(to)
@@ -611,28 +613,19 @@ class WhatsAppClient:
         # Encrypt message
         encrypted_content = self._session_manager.encrypt_message(to, content)
         
-        # Send encrypted message to server
-        message_data = {
-            "to": to,
-            "content": encrypted_content,
-            "type": message_type,
-        }
-        
+        # Send encrypted message via WebSocket
         try:
-            response = await self._rest.post("/api/messages", data=message_data)
+            await self._ws.send_message(to, encrypted_content, message_type, encrypted=True)
             
-            if "error" in response:
-                raise WhatsAppClientError(f"Failed to send message: {response['error']}")
-            
-            # Parse response into Message model
+            # Create Message object for return (we don't get confirmation immediately)
             message = Message(
-                id=response["id"],
-                from_user=response["from"],
-                to=response["to"],
+                id=str(uuid.uuid4()),
+                from_user=self.user_id,
+                to=to,
                 content=content,  # Return decrypted content
-                timestamp=response["timestamp"],
-                status=response.get("status", "sent"),
-                type=response.get("type", "text"),
+                timestamp=int(time.time() * 1000),
+                status="sent",
+                type=message_type,
             )
             
             logger.info(f"Message sent to {to}: {message.id}")
@@ -720,8 +713,11 @@ class WhatsAppClient:
                     # Parse the encrypted content to check for X3DH first message
                     encrypted_data = json.loads(content)
                     
-                    if "x3dh" in encrypted_data:
-                        # This is a first message - process X3DH as responder
+                    # Check if we already have a session with this peer
+                    existing_session = self._session_manager.get_session(from_user)
+                    
+                    if "x3dh" in encrypted_data and not existing_session:
+                        # This is a first message from a new peer - process X3DH as responder
                         logger.info(f"Received first encrypted message from {from_user} with X3DH data")
                         
                         message.content = await self._session_manager.process_first_message(
@@ -732,9 +728,8 @@ class WhatsAppClient:
                             get_one_time_prekey_callback=self._get_one_time_prekey,
                         )
                     else:
-                        # Check if session exists, establish if needed
-                        session = self._session_manager.get_session(from_user)
-                        if not session:
+                        # Session exists or no X3DH data - use existing session or establish new one
+                        if not existing_session:
                             logger.info(f"No session with {from_user}, establishing one before decryption")
                             await self.ensure_session(from_user)
                         
