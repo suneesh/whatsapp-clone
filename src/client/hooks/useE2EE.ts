@@ -124,10 +124,7 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
     let cancelled = false;
 
     async function bootstrap() {
-      console.log('[E2EE] Bootstrap called with userId:', userId, 'token:', token ? token.substring(0, 20) + '...' : 'undefined');
-      
       if (!userId || !token) {
-        console.log('[E2EE] Missing userId or token, skipping bootstrap');
         setManager(null);
         setFingerprint(null);
         setReady(false);
@@ -138,7 +135,6 @@ export function useE2EE(userId: string | undefined, token: string | undefined): 
       const km = new KeyManager(userId);
       try {
         await km.initialize();
-        console.log('[E2EE] KeyManager initialized, syncing prekeys with token:', token.substring(0, 20) + '...');
         await syncPrekeys(km);
         const userFingerprint = await km.getFingerprint();
         if (cancelled) {
