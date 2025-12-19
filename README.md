@@ -4,7 +4,8 @@ A real-time chat application built with React and Cloudflare Workers, featuring 
 
 ## Features
 
-- Real-time messaging using WebSockets
+- **Real-time messaging** using WebSockets
+- **End-to-end encryption** with Signal Protocol
 - Online/offline status indicators
 - Typing indicators
 - Message delivery status (sent/delivered/read)
@@ -12,6 +13,8 @@ A real-time chat application built with React and Cloudflare Workers, featuring 
 - Message persistence with Cloudflare D1
 - Modern WhatsApp-inspired UI
 - Cloudflare Durable Objects for WebSocket handling
+- **Forward secrecy** and **break-in recovery**
+- Automatic key rotation and management
 
 ## Tech Stack
 
@@ -113,6 +116,47 @@ whatsapp-clone/
 ├── vite.config.ts          # Vite configuration
 ├── tsconfig.json           # TypeScript configuration
 └── package.json            # Project dependencies
+├── docs/                   # Documentation
+│   └── E2EE_ARCHITECTURE.md # E2EE implementation details
+```
+
+## 🔒 End-to-End Encryption
+
+This application implements **Signal Protocol** for end-to-end encryption, providing the same security as Signal and WhatsApp.
+
+### Security Features
+
+✅ **End-to-End Encryption**: Messages encrypted on sender's device, decrypted only on recipient's device  
+✅ **Forward Secrecy**: Past messages safe even if keys compromised  
+✅ **Future Secrecy**: Future messages safe after key compromise recovery  
+✅ **Perfect Forward Secrecy**: Each message encrypted with unique key  
+✅ **Deniability**: Cryptographic deniability of message authorship  
+
+### How It Works
+
+1. **X3DH Key Agreement**: Establishes shared secret without prior communication
+2. **Double Ratchet**: Ongoing encryption with automatic key rotation
+3. **Prekey Management**: Automatic generation and rotation of encryption keys
+4. **Session Management**: Per-contact encryption sessions with forward secrecy
+
+### User Experience
+
+- 🔒 Encryption status indicator in chat header
+- 🔑 Fingerprint verification for identity confirmation
+- 🔄 Auto-refresh of encryption keys
+- ⚡ Transparent encryption (no user action needed)
+- 🛠️ "Reset E2EE" option for recovery
+
+### Technical Details
+
+For complete technical documentation, see [E2EE Architecture Guide](docs/E2EE_ARCHITECTURE.md).
+
+**Quick Reference**:
+- **Protocol**: Signal Protocol (X3DH + Double Ratchet)
+- **Crypto Library**: TweetNaCl (X25519, Ed25519)
+- **Storage**: IndexedDB with AES-GCM encryption
+- **Key Rotation**: Signed prekeys every 7 days, one-time prekeys consumed
+- **Session Refresh**: Automatic on key rotation
 
 ```
 
@@ -182,23 +226,33 @@ Some ideas for extending the application:
 
 ## Limitations
 
-- No authentication/authorization (users can pick any username)
-- Messages are stored in plain text
-- No rate limiting
-- Single chat room (all users share the same Durable Object)
+- Single chat room architecture (scalability consideration)
+- Images not yet end-to-end encrypted
+- No message pagination (loads all messages)
 
-## Production Considerations
+## Production Deployment
 
-For production deployment, consider:
+**Current Status**: ✅ Deployed and functional
 
-1. Add proper authentication (JWT, OAuth, etc.)
-2. Implement rate limiting
-3. Add message encryption
-4. Use multiple Durable Objects for scalability
-5. Add error boundaries and better error handling
-6. Implement message pagination
-7. Add file upload support with R2
-8. Set up monitoring and logging
+- **Worker**: https://whatsapp-clone-worker.hi-suneesh.workers.dev
+- **Client**: https://main.whatsapp-clone-n4f.pages.dev
+
+### Production Considerations
+
+✅ **Implemented**:
+- End-to-end encryption with Signal Protocol
+- Automatic key rotation and management
+- Session persistence and recovery
+- Error handling and user feedback
+- Forward secrecy and break-in recovery
+
+🔄 **Future Enhancements**:
+- Rate limiting for API endpoints
+- Multiple Durable Objects for horizontal scaling
+- Message pagination for large chat histories  
+- File encryption with E2EE
+- Admin panel improvements
+- Metrics and monitoring dashboard
 
 ## License
 

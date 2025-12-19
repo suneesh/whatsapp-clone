@@ -1,8 +1,15 @@
 import { Env } from './types';
 import { ChatRoom } from './ChatRoom';
 import bcrypt from 'bcryptjs';
+import { SignJWT, jwtVerify } from 'jose';
 
 export { ChatRoom };
+
+// Secret key for signing JWTs (should be in environment variables)
+const getJWTSecret = (env: Env): Uint8Array => {
+  const secret = (env as any).JWT_SECRET || 'your-secret-key-change-this-in-production';
+  return new TextEncoder().encode(secret);
+};
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -48,15 +55,32 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return null;
     }
-    const userId = authHeader.replace('Bearer ', '').trim();
-    if (!userId) {
+    
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token) {
       return null;
     }
-    const user = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
-    if (!user) {
+
+    try {
+      const secret = getJWTSecret(env);
+      const verified = await jwtVerify(token, secret);
+      const userId = verified.payload.userId as string;
+      
+      if (!userId) {
+        return null;
+      }
+
+      // Verify user still exists
+      const user = await env.DB.prepare('SELECT id FROM users WHERE id = ?').bind(userId).first();
+      if (!user) {
+        return null;
+      }
+
+      return userId;
+    } catch (error) {
+      console.error('JWT verification failed:', error);
       return null;
     }
-    return userId;
   };
 
   try {
@@ -117,6 +141,14 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
         'INSERT INTO users (id, username, password_hash, avatar, lastSeen, created_at, role, is_active, can_send_images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(id, body.username, passwordHash, body.avatar || null, now, now, 'user', 1, 1).run();
 
+      // Generate JWT token
+      const secret = getJWTSecret(env);
+      const token = await new SignJWT({ userId: id, username: body.username })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setExpirationTime('24h')
+        .setIssuedAt()
+        .sign(secret);
+
       return new Response(JSON.stringify({
         id,
         username: body.username,
@@ -125,7 +157,8 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
         role: 'user',
         is_active: 1,
         can_send_images: 1,
-        created_at: now
+        created_at: now,
+        token,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 201,
@@ -180,6 +213,14 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
         'UPDATE users SET lastSeen = ? WHERE id = ?'
       ).bind(lastSeen, user.id).run();
 
+      // Generate JWT token
+      const secret = getJWTSecret(env);
+      const token = await new SignJWT({ userId: user.id, username: user.username })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setExpirationTime('24h')
+        .setIssuedAt()
+        .sign(secret);
+
       return new Response(JSON.stringify({
         id: user.id,
         username: user.username,
@@ -188,7 +229,8 @@ async function handleAPI(request: Request, env: Env, corsHeaders: Record<string,
         role: user.role,
         is_active: user.is_active,
         can_send_images: user.can_send_images,
-        created_at: user.created_at
+        created_at: user.created_at,
+        token,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,

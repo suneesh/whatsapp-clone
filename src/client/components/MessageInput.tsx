@@ -145,7 +145,7 @@ function MessageInput({ value, onChange, onSend, onSendImage, disabled, canSendI
         placeholder={disabled ? 'Connecting...' : 'Type a message'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyPress={handleKeyPress}
+        onKeyDown={handleKeyPress}
         disabled={disabled}
       />
       <button

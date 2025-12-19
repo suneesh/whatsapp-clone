@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS messages (
   readAt INTEGER,
   type TEXT DEFAULT 'text',
   imageData TEXT,
+  encrypted INTEGER DEFAULT 0,
   FOREIGN KEY (fromUser) REFERENCES users(id),
   FOREIGN KEY (toUser) REFERENCES users(id)
 );

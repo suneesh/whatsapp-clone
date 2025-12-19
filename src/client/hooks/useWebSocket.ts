@@ -55,12 +55,15 @@ export const useWebSocket = ({
       console.log('WebSocket connected');
       setConnected(true);
 
-      ws.current?.send(
-        JSON.stringify({
-          type: 'auth',
-          payload: { userId, username },
-        })
-      );
+      // Ensure connection is ready before sending
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(
+          JSON.stringify({
+            type: 'auth',
+            payload: { userId, username },
+          })
+        );
+      }
     };
 
     ws.current.onmessage = (event) => {
@@ -165,14 +168,20 @@ export const useWebSocket = ({
     };
   }, [connect, enabled, userId]);
 
-  const sendMessage = useCallback((to: string, content: string, encrypted: boolean = false) => {
+  const sendMessage = useCallback((to: string, content: string, encrypted: boolean = false, messageId?: string) => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(
-        JSON.stringify({
-          type: 'message',
-          payload: { to, content, messageType: 'text', encrypted },
-        })
-      );
+      try {
+        ws.current.send(
+          JSON.stringify({
+            type: 'message',
+            payload: { to, content, messageType: 'text', encrypted, messageId },
+          })
+        );
+      } catch (error) {
+        console.error('Failed to send message:', error);
+      }
+    } else {
+      console.warn('WebSocket not ready, message not sent');
     }
   }, []);
 

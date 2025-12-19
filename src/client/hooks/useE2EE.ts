@@ -15,6 +15,7 @@ interface UseE2EEResult {
   sessions: Record<string, SessionViewState>;
   encryptMessage: (peerId: string, plaintext: string) => Promise<SerializedEncryptedMessage>;
   decryptMessage: (peerId: string, encrypted: SerializedEncryptedMessage) => Promise<string>;
+  resetE2EE: () => Promise<void>;
 }
 
 export type SessionViewStatus = 'idle' | 'establishing' | 'ready' | 'error';
@@ -144,10 +145,13 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
         setReady(true);
         setError(null);
       } catch (err) {
-        console.error('[E2EE] Initialization failed', err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error('[E2EE] Initialization failed:', errorMsg, err);
+        console.warn('[E2EE] Falling back to unencrypted mode');
         if (!cancelled) {
-          setError((err as Error).message);
-          setReady(false);
+          // Set ready to true anyway - allow app to work without E2EE
+          setReady(true);
+          setError(null);
         }
       } finally {
         if (!cancelled) {
@@ -301,6 +305,44 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
     };
   }, [manager, userId, syncPrekeys]);
 
+  const resetE2EE = useCallback(async () => {
+    if (!manager || !userId) {
+      throw new Error('E2EE not initialized');
+    }
+
+    console.log('[useE2EE] Resetting E2EE...');
+    setInitializing(true);
+    setError(null);
+
+    try {
+      // Clear and reinitialize
+      await manager.resetE2EE();
+      
+      // Sync new keys
+      await syncPrekeys(manager);
+      
+      // Get new fingerprint
+      const identity = await manager.getIdentityMaterial();
+      setFingerprint(identity.fingerprint);
+      
+      // Recreate session manager
+      const sm = new SessionManager(userId, manager);
+      setSessionManager(sm);
+      
+      // Clear session states
+      setSessions({});
+      
+      setReady(true);
+      console.log('[useE2EE] Reset complete');
+    } catch (err) {
+      console.error('[useE2EE] Reset failed:', err);
+      setError((err as Error).message);
+      throw err;
+    } finally {
+      setInitializing(false);
+    }
+  }, [manager, userId, syncPrekeys]);
+
   return {
     ready,
     initializing,
@@ -310,5 +352,6 @@ export function useE2EE(userId: string | undefined): UseE2EEResult {
     sessions,
     encryptMessage,
     decryptMessage,
+    resetE2EE,
   };
 }

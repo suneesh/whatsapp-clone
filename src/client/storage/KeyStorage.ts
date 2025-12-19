@@ -110,6 +110,8 @@ export interface SessionRecordRow {
   updatedAt: number;
   lastError?: string;
   ratchetState?: string;
+  // X3DH initialization data (for first message only)
+  x3dhData?: string; // JSON-encoded X3DHInitData
 }
 
 export interface StoredSessionRecord {
@@ -128,6 +130,13 @@ export interface StoredSessionRecord {
   status: SessionStorageStatus;
   createdAt: number;
   updatedAt: number;
+  // X3DH initialization data (for first message only)
+  x3dhData?: {
+    localIdentityKey: Uint8Array;
+    localEphemeralKey: Uint8Array;
+    usedSignedPrekeyId: number;
+    usedOneTimePrekeyId?: number;
+  };
   lastError?: string;
   ratchetState?: string;
 }
@@ -150,6 +159,13 @@ export interface SessionRecordInput {
   updatedAt: number;
   lastError?: string;
   ratchetState?: string;
+  // X3DH initialization data (for first message only)
+  x3dhData?: {
+    localIdentityKey: Uint8Array;
+    localEphemeralKey: Uint8Array;
+    usedSignedPrekeyId: number;
+    usedOneTimePrekeyId?: number;
+  };
 }
 
 export class KeyStorage {
@@ -164,8 +180,10 @@ export class KeyStorage {
   private metadataCache?: MetadataRecord;
 
   constructor(private readonly userId: string) {
+    console.log('[KeyStorage] Initializing IndexedDB for user:', userId);
     this.dbPromise = openDB<KeyDBSchema>(KeyStorage.DB_NAME, KeyStorage.DB_VERSION, {
       upgrade(db) {
+        console.log('[KeyStorage] Upgrading database schema');
         if (!db.objectStoreNames.contains('identity')) {
           db.createObjectStore('identity');
         }
@@ -181,25 +199,38 @@ export class KeyStorage {
         if (!db.objectStoreNames.contains('sessions')) {
           db.createObjectStore('sessions');
         }
+        console.log('[KeyStorage] Database schema upgraded');
       },
+    }).catch((error) => {
+      console.error('[KeyStorage] Failed to open IndexedDB:', error);
+      throw error;
     });
   }
 
   async loadIdentity(): Promise<StoredIdentityRecord | null> {
-    const db = await this.dbPromise;
-    const row = await db.get('identity', this.userId);
-    if (!row) {
-      return null;
-    }
+    try {
+      console.log('[KeyStorage] Loading identity for user:', this.userId);
+      const db = await this.dbPromise;
+      const row = await db.get('identity', this.userId);
+      if (!row) {
+        console.log('[KeyStorage] No identity found for user:', this.userId);
+        return null;
+      }
 
-    const seed = await this.decrypt(row.encryptedSeed);
-    return {
-      seed,
-      fingerprint: row.fingerprint,
-      signingPublicKey: fromBase64(row.signingPublicKey),
-      x25519PublicKey: fromBase64(row.x25519PublicKey),
-      createdAt: row.createdAt,
-    };
+      console.log('[KeyStorage] Identity found, decrypting seed');
+      const seed = await this.decrypt(row.encryptedSeed);
+      console.log('[KeyStorage] Identity decrypted successfully');
+      return {
+        seed,
+        fingerprint: row.fingerprint,
+        signingPublicKey: fromBase64(row.signingPublicKey),
+        x25519PublicKey: fromBase64(row.x25519PublicKey),
+        createdAt: row.createdAt,
+      };
+    } catch (error) {
+      console.error('[KeyStorage] Failed to load identity:', error);
+      throw error;
+    }
   }
 
   async saveIdentity(record: {
@@ -308,32 +339,43 @@ export class KeyStorage {
   }
 
   async getPendingOneTimePrekeys(limit: number): Promise<StoredOneTimePrekeyRecord[]> {
-    const db = await this.dbPromise;
-    const tx = db.transaction('one_time_prekeys');
-    const rows: OneTimePrekeyRecordRow[] = [];
-    let cursor = await tx.store.openCursor();
-    while (cursor && rows.length < limit) {
-      const value = cursor.value as OneTimePrekeyRecordRow;
-      if (!value.uploaded) {
-        rows.push(value);
+    try {
+      const db = await this.dbPromise;
+      const tx = db.transaction('one_time_prekeys');
+      const rows: OneTimePrekeyRecordRow[] = [];
+      let cursor = await tx.store.openCursor();
+      while (cursor && rows.length < limit) {
+        const value = cursor.value as OneTimePrekeyRecordRow;
+        if (!value.uploaded) {
+          rows.push(value);
+        }
+        cursor = await cursor.continue();
       }
-      cursor = await cursor.continue();
-    }
-    await tx.done;
+      await tx.done;
 
-    return Promise.all(
-      rows.map(async (value) => {
-        const secretKey = await this.decrypt(value.encryptedSecretKey);
-        return {
-          keyId: value.keyId,
-          publicKey: fromBase64(value.publicKey),
-          secretKey,
-          createdAt: value.createdAt,
-          uploaded: value.uploaded,
-          consumed: value.consumed,
-        };
-      })
-    );
+      const results = await Promise.allSettled(
+        rows.map(async (value) => {
+          const secretKey = await this.decrypt(value.encryptedSecretKey);
+          return {
+            keyId: value.keyId,
+            publicKey: fromBase64(value.publicKey),
+            secretKey,
+            createdAt: value.createdAt,
+            uploaded: value.uploaded,
+            consumed: value.consumed,
+          };
+        })
+      );
+
+      // Filter out failed decryptions and return only successful ones
+      return results
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => (result as PromiseFulfilledResult<StoredOneTimePrekeyRecord>).value);
+    } catch (error) {
+      console.error('[KeyStorage] Failed to get pending one-time prekeys:', error);
+      // Return empty array on error instead of failing completely
+      return [];
+    }
   }
 
   async markOneTimePrekeysUploaded(keyIds: number[]): Promise<void> {
@@ -364,6 +406,67 @@ export class KeyStorage {
     return count;
   }
 
+  /**
+   * Load a specific one-time prekey by ID
+   */
+  async loadOneTimePrekey(keyId: number): Promise<StoredOneTimePrekeyRecord | undefined> {
+    console.log('[KeyStorage] Loading one-time prekey:', keyId);
+    try {
+      const db = await this.dbPromise;
+      const storageKey = this.getStorageKey(keyId);
+      const row = await db.get('one_time_prekeys', storageKey);
+      
+      if (!row) {
+        console.log('[KeyStorage] One-time prekey not found:', keyId);
+        return undefined;
+      }
+
+      const secretKey = await this.decrypt(row.encryptedSecretKey);
+      return {
+        keyId: row.keyId,
+        publicKey: fromBase64(row.publicKey),
+        secretKey,
+        createdAt: row.createdAt,
+        uploaded: row.uploaded,
+        consumed: row.consumed,
+      };
+    } catch (error) {
+      console.error('[KeyStorage] Failed to load one-time prekey:', keyId, error);
+      return undefined;
+    }
+  }
+
+  /**
+   * Delete a specific one-time prekey by ID (after it has been consumed)
+   */
+  async deleteOneTimePrekey(keyId: number): Promise<void> {
+    console.log('[KeyStorage] Deleting one-time prekey:', keyId);
+    try {
+      const db = await this.dbPromise;
+      const storageKey = this.getStorageKey(keyId);
+      await db.delete('one_time_prekeys', storageKey);
+      console.log('[KeyStorage] One-time prekey deleted:', keyId);
+    } catch (error) {
+      console.error('[KeyStorage] Failed to delete one-time prekey:', keyId, error);
+    }
+  }
+
+  /**
+   * Get the secret key for a signed prekey
+   */
+  async getSignedPrekeySecret(keyId: number): Promise<Uint8Array> {
+    console.log('[KeyStorage] Getting signed prekey secret:', keyId);
+    const db = await this.dbPromise;
+    const storageKey = this.getStorageKey(keyId);
+    const row = await db.get('signed_prekeys', storageKey);
+    
+    if (!row) {
+      throw new Error(`Signed prekey ${keyId} not found`);
+    }
+
+    return await this.decrypt(row.encryptedSecretKey);
+  }
+
   async saveSession(record: SessionRecordInput): Promise<void> {
     const db = await this.dbPromise;
     const storageKey = this.getSessionStorageKey(record.peerId);
@@ -385,6 +488,12 @@ export class KeyStorage {
       updatedAt: record.updatedAt,
       lastError: record.lastError,
       ratchetState: record.ratchetState,
+      x3dhData: record.x3dhData ? JSON.stringify({
+        localIdentityKey: toBase64(record.x3dhData.localIdentityKey),
+        localEphemeralKey: toBase64(record.x3dhData.localEphemeralKey),
+        usedSignedPrekeyId: record.x3dhData.usedSignedPrekeyId,
+        usedOneTimePrekeyId: record.x3dhData.usedOneTimePrekeyId,
+      }) : undefined,
     };
     await db.put('sessions', row, storageKey);
   }
@@ -422,6 +531,33 @@ export class KeyStorage {
     row.ratchetState = ratchetState;
     row.updatedAt = Date.now();
     await db.put('sessions', row, storageKey);
+  }
+
+  /**
+   * Clear X3DH initialization data after first message is sent
+   */
+  async clearSessionX3DHData(peerId: string): Promise<void> {
+    console.log('[KeyStorage] Clearing X3DH data for peer:', peerId);
+    const db = await this.dbPromise;
+    const storageKey = this.getSessionStorageKey(peerId);
+    const row = await db.get('sessions', storageKey);
+    if (!row) {
+      console.warn('[KeyStorage] Session not found when clearing X3DH data:', peerId);
+      return;
+    }
+    row.x3dhData = undefined;
+    row.updatedAt = Date.now();
+    await db.put('sessions', row, storageKey);
+  }
+
+  /**
+   * Delete a session (used when refreshing due to key rotation)
+   */
+  async deleteSession(peerId: string): Promise<void> {
+    console.log('[KeyStorage] Deleting session for peer:', peerId);
+    const db = await this.dbPromise;
+    const storageKey = this.getSessionStorageKey(peerId);
+    await db.delete('sessions', storageKey);
   }
 
   async ensureNextPrekeyIdIncrement(count: number): Promise<number> {
@@ -494,52 +630,108 @@ export class KeyStorage {
       updatedAt: row.updatedAt,
       lastError: row.lastError,
       ratchetState: row.ratchetState,
+      x3dhData: row.x3dhData ? (() => {
+        const parsed = JSON.parse(row.x3dhData);
+        return {
+          localIdentityKey: fromBase64(parsed.localIdentityKey),
+          localEphemeralKey: fromBase64(parsed.localEphemeralKey),
+          usedSignedPrekeyId: parsed.usedSignedPrekeyId,
+          usedOneTimePrekeyId: parsed.usedOneTimePrekeyId,
+        };
+      })() : undefined,
     };
   }
 
   private async encrypt(data: Uint8Array): Promise<EncryptedSecret> {
-    const masterKey = await this.getMasterKey();
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      masterKey,
-      data
-    );
-    return {
-      ciphertext: toBase64(new Uint8Array(encrypted)),
-      iv: toBase64(iv),
-    };
+    try {
+      console.log('[KeyStorage] Encrypting data');
+      const masterKey = await this.getMasterKey();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        masterKey,
+        data
+      );
+      console.log('[KeyStorage] Data encrypted successfully');
+      return {
+        ciphertext: toBase64(new Uint8Array(encrypted)),
+        iv: toBase64(iv),
+      };
+    } catch (error) {
+      console.error('[KeyStorage] Encryption failed:', error);
+      throw error;
+    }
   }
 
   private async decrypt(secret: EncryptedSecret): Promise<Uint8Array> {
-    const masterKey = await this.getMasterKey();
-    const iv = fromBase64(secret.iv);
-    const ciphertext = fromBase64(secret.ciphertext);
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      masterKey,
-      ciphertext
-    );
-    return new Uint8Array(decrypted);
+    try {
+      console.log('[KeyStorage] Decrypting data');
+      const masterKey = await this.getMasterKey();
+      const iv = fromBase64(secret.iv);
+      const ciphertext = fromBase64(secret.ciphertext);
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        masterKey,
+        ciphertext
+      );
+      console.log('[KeyStorage] Data decrypted successfully');
+      return new Uint8Array(decrypted);
+    } catch (error) {
+      console.error('[KeyStorage] Decryption failed:', error);
+      throw error;
+    }
   }
 
   private async getMasterKey(): Promise<CryptoKey> {
     if (this.masterKeyPromise) {
       return this.masterKeyPromise;
     }
+    console.log('[KeyStorage] Loading master key');
     this.masterKeyPromise = this.loadMasterKey();
     return this.masterKeyPromise;
   }
 
   private async loadMasterKey(): Promise<CryptoKey> {
-    const metadata = await this.getMetadata();
-    const keyBytes = fromBase64(metadata.masterKey);
-    return crypto.subtle.importKey(
-      'raw',
-      keyBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['encrypt', 'decrypt']
+    try {
+      console.log('[KeyStorage] Importing master key from metadata');
+      const metadata = await this.getMetadata();
+      const keyBytes = fromBase64(metadata.masterKey);
+      const masterKey = await crypto.subtle.importKey(
+        'raw',
+        keyBytes,
+        { name: 'AES-GCM' },
+        false,
+        ['encrypt', 'decrypt']
+      );
+      console.log('[KeyStorage] Master key imported successfully');
+      return masterKey;
+    } catch (error) {
+      console.error('[KeyStorage] Failed to load master key:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear all E2EE data - use with caution!
+   * This will delete identity, prekeys, and sessions
+   */
+  async clearAllE2EEData(): Promise<void> {
+    console.log('[KeyStorage] Clearing all E2EE data...');
+    const db = await this.dbPromise;
+    const tx = db.transaction(
+      ['metadata', 'identity', 'signed_prekeys', 'one_time_prekeys', 'sessions'],
+      'readwrite'
     );
+    
+    await Promise.all([
+      tx.objectStore('metadata').clear(),
+      tx.objectStore('identity').clear(),
+      tx.objectStore('signed_prekeys').clear(),
+      tx.objectStore('one_time_prekeys').clear(),
+      tx.objectStore('sessions').clear(),
+    ]);
+    
+    await tx.done;
+    console.log('[KeyStorage] All E2EE data cleared');
   }
 }

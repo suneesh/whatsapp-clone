@@ -153,12 +153,17 @@ export class ChatRoom implements DurableObject {
               let validatedEncrypted = false;
 
               if (isEncrypted) {
-                // Verify the content is actually encrypted JSON, not plain text
+                // Verify the content is actually encrypted JSON
+                // Supports both AES-GCM format (iv, ephemeralPublicKey, ciphertext)
+                // and Signal protocol format (header, ciphertext, authTag)
                 try {
                   const parsed = JSON.parse(data.payload.content);
-                  if (parsed && typeof parsed === 'object' &&
-                      parsed.ciphertext && parsed.iv && parsed.ephemeralPublicKey) {
-                    validatedEncrypted = true;
+                  if (parsed && typeof parsed === 'object') {
+                    const hasAesGcmFormat = parsed.ciphertext && parsed.iv && parsed.ephemeralPublicKey;
+                    const hasSignalFormat = parsed.header && parsed.ciphertext && typeof parsed.authTag !== 'undefined';
+                    if (hasAesGcmFormat || hasSignalFormat) {
+                      validatedEncrypted = true;
+                    }
                   }
                 } catch (e) {
                   console.warn('[E2EE] Client sent encrypted flag but content is not valid encrypted JSON');
@@ -166,7 +171,7 @@ export class ChatRoom implements DurableObject {
               }
 
               const message: Message = {
-                id: crypto.randomUUID(),
+                id: data.payload.messageId || crypto.randomUUID(),
                 from: session.userId,
                 to: data.payload.to,
                 content: data.payload.content,

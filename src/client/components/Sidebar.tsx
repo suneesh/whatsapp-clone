@@ -12,6 +12,7 @@ interface SidebarProps {
   selectedUser: User | null;
   onSelectUser: (user: User) => void;
   onLogout: () => void;
+  onResetE2EE?: () => void;
   onOpenAdmin?: () => void;
   unreadCounts?: Map<string, number>;
   fingerprint?: string;
@@ -25,7 +26,7 @@ function formatFingerprint(value: string): string {
     .trim() ?? value;
 }
 
-function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout, onOpenAdmin, unreadCounts, fingerprint }: SidebarProps) {
+function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout, onResetE2EE, onOpenAdmin, unreadCounts, fingerprint }: SidebarProps) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -39,10 +40,28 @@ function Sidebar({ currentUser, users, selectedUser, onSelectUser, onLogout, onO
             </div>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {currentUser.role === 'admin' && onOpenAdmin && (
             <button className="admin-panel-btn" onClick={onOpenAdmin}>
               👑 Admin
+            </button>
+          )}
+          {onResetE2EE && (
+            <button 
+              className="reset-e2ee-btn" 
+              onClick={onResetE2EE}
+              title="Reset encryption data"
+              style={{
+                padding: '6px 10px',
+                fontSize: '11px',
+                backgroundColor: '#f44336',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              🔄 Reset E2EE
             </button>
           )}
           <button className="logout-btn" onClick={onLogout}>

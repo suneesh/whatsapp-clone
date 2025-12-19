@@ -66,6 +66,16 @@ export interface X3DHResult {
   usedOneTimePrekeyId?: number;
 }
 
+/**
+ * X3DH initialization data to be stored in session and sent with first message
+ */
+export interface X3DHInitData {
+  localIdentityKey: Uint8Array;
+  localEphemeralKey: Uint8Array;
+  usedSignedPrekeyId: number;
+  usedOneTimePrekeyId?: number;
+}
+
 export interface EncryptedSecret {
   ciphertext: string;
   iv: string;

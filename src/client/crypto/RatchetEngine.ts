@@ -45,6 +45,13 @@ export interface SerializedEncryptedMessage {
   };
   ciphertext: string;
   authTag: string;
+  // X3DH initialization data (only present on first message)
+  x3dh?: {
+    senderIdentityKey: string;      // Base64 encoded public key
+    senderEphemeralKey: string;     // Base64 encoded ephemeral public key
+    usedSignedPrekeyId: number;     // Which signed prekey was used
+    usedOneTimePrekeyId?: number;   // Which one-time prekey was used (if any)
+  };
 }
 
 export class RatchetEngine {
@@ -95,6 +102,9 @@ export class RatchetEngine {
     state: RatchetState,
     plaintext: Uint8Array
   ): Promise<{ message: EncryptedMessage; newState: RatchetState }> {
+    // Ensure plaintext is a proper Uint8Array (handle cross-realm issues)
+    const plaintextBytes = plaintext instanceof Uint8Array ? plaintext : new Uint8Array(plaintext);
+    
     // If no sending chain, perform DH ratchet
     if (!state.sendingChainKey) {
       state = await this.performDHRatchet(state, null);
@@ -115,7 +125,7 @@ export class RatchetEngine {
 
     // Encrypt message
     const nonce = nacl.randomBytes(24); // NaCl requires 24-byte nonce
-    const ciphertext = nacl.secretbox(plaintext, nonce, messageKey);
+    const ciphertext = nacl.secretbox(plaintextBytes, nonce, messageKey);
 
     // Combine nonce with ciphertext
     const combined = concatUint8Arrays([nonce, ciphertext]);
@@ -139,17 +149,28 @@ export class RatchetEngine {
     state: RatchetState,
     message: EncryptedMessage
   ): Promise<{ plaintext: Uint8Array; newState: RatchetState }> {
+    console.log('[RatchetEngine] Starting decryption');
+    console.log('[RatchetEngine] Remote ratchet key matches:', 
+      state.dhRatchetRemoteKey ? this.compareKeys(state.dhRatchetRemoteKey, message.header.ratchetKey) : 'no current key'
+    );
+    
     // Check if we need to perform DH ratchet
     const needsRatchet =
       !state.dhRatchetRemoteKey ||
       !this.compareKeys(state.dhRatchetRemoteKey, message.header.ratchetKey);
 
+    console.log('[RatchetEngine] Needs ratchet:', needsRatchet);
+    
     if (needsRatchet) {
+      console.log('[RatchetEngine] Performing DH ratchet');
       state = await this.performDHRatchet(state, message.header.ratchetKey);
+      console.log('[RatchetEngine] DH ratchet complete');
     }
 
     // Skip message keys if needed
+    console.log('[RatchetEngine] Current receiving chain length:', state.receivingChainLength, 'Message number:', message.header.messageNumber);
     state = await this.skipMessageKeys(state, message.header.messageNumber);
+    console.log('[RatchetEngine] Skip complete, now at message number:', state.receivingChainLength);
 
     // Try to get message key from skipped keys first
     const skippedKey = this.getSkippedMessageKey(
@@ -160,6 +181,7 @@ export class RatchetEngine {
 
     let messageKey: Uint8Array;
     if (skippedKey) {
+      console.log('[RatchetEngine] Using skipped message key');
       messageKey = skippedKey;
       this.deleteSkippedMessageKey(
         state,
@@ -167,6 +189,7 @@ export class RatchetEngine {
         message.header.messageNumber
       );
     } else {
+      console.log('[RatchetEngine] Deriving message key from chain');
       // Derive message key from receiving chain
       messageKey = await this.kdfMessageKey(state.receivingChainKey!);
 
@@ -176,16 +199,23 @@ export class RatchetEngine {
     }
 
     // Extract nonce and ciphertext
+    console.log('[RatchetEngine] Ciphertext length:', message.ciphertext.length);
     const nonce = message.ciphertext.slice(0, 24);
     const ciphertext = message.ciphertext.slice(24);
+    console.log('[RatchetEngine] Nonce:', nonce.length, 'bytes, Encrypted data:', ciphertext.length, 'bytes');
 
     // Decrypt
+    console.log('[RatchetEngine] Calling nacl.secretbox.open');
     const plaintext = nacl.secretbox.open(ciphertext, nonce, messageKey);
 
     if (!plaintext) {
+      console.log('[RatchetEngine] Decryption failed - authentication check failed');
+      console.log('[RatchetEngine] Message key (first 8 bytes):', toBase64(messageKey.slice(0, 8)));
+      console.log('[RatchetEngine] Nonce (first 8 bytes):', toBase64(nonce.slice(0, 8)));
       throw new Error('Failed to decrypt message - authentication failed');
     }
 
+    console.log('[RatchetEngine] Decryption successful, plaintext length:', plaintext.length);
     return { plaintext, newState: state };
   }
 
@@ -280,8 +310,8 @@ export class RatchetEngine {
     });
 
     return {
-      rootKey: output.slice(0, 32),
-      chainKey: output.slice(32, 64),
+      rootKey: new Uint8Array(output.slice(0, 32)),
+      chainKey: new Uint8Array(output.slice(32, 64)),
     };
   }
 
@@ -314,7 +344,8 @@ export class RatchetEngine {
       ['sign']
     );
     const output = await crypto.subtle.sign('HMAC', key, input);
-    return new Uint8Array(output).slice(0, 32); // 256 bits
+    const messageKey = new Uint8Array(output);
+    return new Uint8Array(messageKey.slice(0, 32)); // 256 bits, explicitly wrap slice
   }
 
   /**

@@ -29,6 +29,7 @@ interface Message {
   status: 'sent' | 'delivered' | 'read';
   type?: 'text' | 'image';
   imageData?: string;
+  encrypted?: boolean;
 }
 
 function App() {
@@ -48,6 +49,7 @@ function App() {
     sessions: sessionStates,
     encryptMessage,
     decryptMessage,
+    resetE2EE,
   } = useE2EE(currentUser?.id);
 
   // Restore user from localStorage on app mount
@@ -99,31 +101,43 @@ function App() {
   }, []);
 
   const handleMessage = useCallback(async (message: Message) => {
+    console.log('[App] Received message:', { id: message.id, from: message.from, encrypted: message.encrypted, contentPreview: message.content.substring(0, 50) });
+    
     // Decrypt if encrypted (check server-validated encrypted flag)
     let decryptedMessage = message;
     if (message.encrypted && message.type === 'text') {
       try {
+        console.log('[App] Message is encrypted, attempting decryption');
+        console.log('[App] Encrypted content:', message.content.substring(0, 100));
         // Content should be JSON with encrypted data
         const encryptedData = JSON.parse(message.content);
+        console.log('[App] Parsed encrypted data, calling decryptMessage');
         const plaintext = await decryptMessage(message.from, encryptedData);
+        console.log('[App] Plaintext result:', plaintext);
         decryptedMessage = {
           ...message,
           content: plaintext,
         };
+        console.log('[App] Message decrypted successfully');
       } catch (err) {
         console.error('[E2EE] Failed to decrypt message:', err);
+        console.error('[E2EE] Error stack:', err instanceof Error ? err.stack : 'No stack');
         decryptedMessage = {
           ...message,
-          content: '🔒 [Decryption failed]',
+          content: '🔒 [Decryption failed] - Check console for details',
         };
       }
+    } else if (!message.encrypted) {
+      console.log('[App] Message is not encrypted');
     }
 
     setMessages((prev) => {
       const exists = prev.find((m) => m.id === decryptedMessage.id);
       if (exists) {
+        console.log('[App] Updating existing message:', decryptedMessage.id);
         return prev.map((m) => (m.id === decryptedMessage.id ? decryptedMessage : m));
       }
+      console.log('[App] Adding new message:', decryptedMessage.id);
       return [...prev, decryptedMessage];
     });
   }, [decryptMessage]);
@@ -330,6 +344,28 @@ function App() {
     console.log('[App] User logged out');
   };
 
+  const handleResetE2EE = useCallback(async () => {
+    if (!resetE2EE) return;
+    
+    const confirmed = window.confirm(
+      'Are you sure you want to reset encryption data? This will:\n\n' +
+      '• Delete all encryption keys and sessions\n' +
+      '• Generate new encryption identity\n' +
+      '• Require re-establishing sessions with all contacts\n\n' +
+      'This action cannot be undone.'
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      await resetE2EE();
+      alert('Encryption data has been reset successfully. You can now send encrypted messages with a fresh identity.');
+    } catch (err) {
+      console.error('[App] Failed to reset E2EE:', err);
+      alert('Failed to reset encryption data: ' + (err as Error).message);
+    }
+  }, [resetE2EE]);
+
   const handleSendGroupMessage = useCallback((groupId: string, content: string, type?: string) => {
     sendGroupMessage(groupId, content, type || 'text');
   }, [sendGroupMessage]);
@@ -353,17 +389,33 @@ function App() {
       // Ensure session exists
       await ensureSession(to);
 
+      // Create message object to display immediately to sender with plaintext
+      const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      const sentMessage: Message = {
+        id: messageId,
+        from: currentUser!.id,
+        to,
+        content, // Show plaintext to sender
+        timestamp: Date.now(),
+        status: 'sent',
+        type: 'text',
+      };
+
+      // Add to messages immediately (before encryption/sending)
+      setMessages((prev) => [...prev, sentMessage]);
+
       // Encrypt the message
+      console.log('[E2EE] Encrypting message to', to);
       const encrypted = await encryptMessage(to, content);
 
       // Send encrypted message as JSON with encrypted flag
       const encryptedPayload = JSON.stringify(encrypted);
-      sendMessage(to, encryptedPayload, true);
+      sendMessage(to, encryptedPayload, true, messageId);
     } catch (err) {
       console.error('[E2EE] Encryption failed, sending unencrypted:', err);
       sendMessage(to, content, false);
     }
-  }, [e2eeReady, ensureSession, encryptMessage, sendMessage]);
+  }, [currentUser, e2eeReady, ensureSession, encryptMessage, sendMessage]);
 
   const handleSendImage = useCallback(async (to: string, imageData: string) => {
     // For now, images are not encrypted (placeholder for future implementation)
@@ -393,6 +445,7 @@ function App() {
         onTyping={sendTyping}
         onMarkAsRead={handleMarkAsRead}
         onLogout={handleLogout}
+        onResetE2EE={handleResetE2EE}
         onOpenAdmin={() => setShowAdminDashboard(true)}
         groupMessages={groupMessages}
         groupTypingUsers={groupTypingUsers}

@@ -54,6 +54,7 @@ interface ChatProps {
   onTyping: (to: string, typing: boolean) => void;
   onMarkAsRead: (toUserId: string, messageIds: string[]) => void;
   onLogout: () => void;
+  onResetE2EE?: () => void;
   onOpenAdmin?: () => void;
   // Group props
   groupMessages: any[];
@@ -79,6 +80,7 @@ function Chat({
   onTyping,
   onMarkAsRead,
   onLogout,
+  onResetE2EE,
   onOpenAdmin,
   groupMessages,
   groupTypingUsers,
@@ -394,6 +396,7 @@ function Chat({
             selectedUser={selectedUser}
             onSelectUser={handleSelectUser}
             onLogout={onLogout}
+            onResetE2EE={onResetE2EE}
             onOpenAdmin={onOpenAdmin}
             unreadCounts={unreadCounts}
             fingerprint={currentUserFingerprint}

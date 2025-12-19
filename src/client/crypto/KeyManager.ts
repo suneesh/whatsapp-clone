@@ -25,9 +25,18 @@ export class KeyManager {
   }
 
   async initialize(): Promise<void> {
-    await this.ensureIdentity();
-    await this.ensureSignedPrekey();
-    await this.ensureOneTimePrekeys();
+    try {
+      console.log('[KeyManager] Initializing...');
+      await this.ensureIdentity();
+      console.log('[KeyManager] Identity ensured');
+      await this.ensureSignedPrekey();
+      console.log('[KeyManager] Signed prekey ensured');
+      await this.ensureOneTimePrekeys();
+      console.log('[KeyManager] One-time prekeys ensured');
+    } catch (error) {
+      console.error('[KeyManager] Initialization error:', error);
+      throw error;
+    }
   }
 
   async getFingerprint(): Promise<string> {
@@ -183,5 +192,17 @@ export class KeyManager {
         createdAt: item.createdAt,
       }))
     );
+  }
+
+  /**
+   * Clear all E2EE data and reinitialize
+   * Use this to recover from corrupted state
+   */
+  async resetE2EE(): Promise<void> {
+    console.log('[KeyManager] Resetting E2EE data...');
+    await this.storage.clearAllE2EEData();
+    console.log('[KeyManager] Reinitializing...');
+    await this.initialize();
+    console.log('[KeyManager] E2EE reset complete');
   }
 }
