@@ -29,6 +29,7 @@ async def test_register_success(client):
         "is_active": 1,
         "can_send_images": 1,
         "created_at": 1234567890,
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyXzEyMyIsImV4cCI6OTk5OTk5OTk5OX0.test_token",
     }
 
     with patch.object(client._rest, "post", new=AsyncMock(return_value=mock_response)):
@@ -80,6 +81,7 @@ async def test_login_success(client):
         "is_active": 1,
         "can_send_images": 1,
         "created_at": 1234567890,
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyXzEyMyIsImV4cCI6OTk5OTk5OTk5OX0.test_token",
     }
 
     mock_upload_response = {
@@ -137,6 +139,7 @@ async def test_logout(client):
         "is_active": 1,
         "can_send_images": 1,
         "created_at": 1234567890,
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyXzEyMyIsImV4cCI6OTk5OTk5OTk5OX0.test_token",
     }
 
     mock_upload_response = {
@@ -182,6 +185,7 @@ async def test_close():
         "is_active": 1,
         "can_send_images": 1,
         "created_at": 1234567890,
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyXzEyMyIsImV4cCI6OTk5OTk5OTk5OX0.test_token",
     }
 
     mock_upload_response = {

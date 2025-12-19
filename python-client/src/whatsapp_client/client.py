@@ -86,6 +86,11 @@ class WhatsAppClient:
         return self._auth.user_id
 
     @property
+    def token(self) -> Optional[str]:
+        """Get current JWT authentication token."""
+        return self._auth.token
+
+    @property
     def is_authenticated(self) -> bool:
         """Check if user is authenticated."""
         return self._auth.is_authenticated
@@ -323,7 +328,7 @@ class WhatsAppClient:
             >>> print(f"Registered: {user.username}")
         """
         user = await self._auth.register(username, password, avatar)
-        self._rest.set_user_id(self.user_id)
+        self._rest.set_token(self.token)
 
         # Initialize cryptographic keys
         logger.info("Initializing cryptographic keys...")
@@ -357,7 +362,7 @@ class WhatsAppClient:
             >>> print(f"Logged in as {user.username}")
         """
         user = await self._auth.login(username, password)
-        self._rest.set_user_id(self.user_id)
+        self._rest.set_token(self.token)
 
         # Initialize cryptographic keys
         logger.info("Initializing cryptographic keys...")
@@ -1467,7 +1472,7 @@ class WhatsAppClient:
             self._ws = None
         
         await self._auth.logout()
-        self._rest.set_user_id(None)
+        self._rest.set_token(None)
         self._key_manager = None
         self._session_manager = None
         self._message_storage = None

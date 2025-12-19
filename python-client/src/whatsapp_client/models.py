@@ -12,6 +12,7 @@ class User(BaseModel):
     username: str
     avatar: Optional[str] = None
     last_seen: int = Field(alias="lastSeen")
+    token: Optional[str] = None
     role: str = "user"
     is_active: int = Field(default=1, alias="is_active")
     can_send_images: int = Field(default=1, alias="can_send_images")
@@ -82,6 +83,7 @@ class AuthResponse(BaseModel):
     username: str
     avatar: Optional[str] = None
     last_seen: int = Field(alias="lastSeen")
+    token: Optional[str] = None
     role: str = "user"
     is_active: int = Field(default=1, alias="is_active")
     can_send_images: int = Field(default=1, alias="can_send_images")

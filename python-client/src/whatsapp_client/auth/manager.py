@@ -25,6 +25,7 @@ class AuthManager:
         self.client = client
         self._user: Optional[User] = None
         self._user_id: Optional[str] = None
+        self._token: Optional[str] = None
 
     @property
     def user(self) -> Optional[User]:
@@ -37,9 +38,14 @@ class AuthManager:
         return self._user_id
 
     @property
+    def token(self) -> Optional[str]:
+        """Get current JWT token."""
+        return self._token
+
+    @property
     def is_authenticated(self) -> bool:
         """Check if user is authenticated."""
-        return self._user is not None and self._user_id is not None
+        return self._user is not None and self._user_id is not None and self._token is not None
 
     async def register(
         self, username: str, password: str, avatar: Optional[str] = None
@@ -85,6 +91,10 @@ class AuthManager:
             auth_response = AuthResponse(**response)
             self._user = User(**response)
             self._user_id = auth_response.id
+            self._token = auth_response.token
+            
+            # Update REST client with token
+            self.client._rest.set_token(self._token)
 
             logger.info(f"Successfully registered user: {username} (ID: {self._user_id})")
             return self._user
@@ -134,6 +144,10 @@ class AuthManager:
             auth_response = AuthResponse(**response)
             self._user = User(**response)
             self._user_id = auth_response.id
+            self._token = auth_response.token
+            
+            # Update REST client with token
+            self.client._rest.set_token(self._token)
 
             logger.info(f"Successfully logged in: {username} (ID: {self._user_id})")
             return self._user

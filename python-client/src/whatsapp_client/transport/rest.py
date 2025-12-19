@@ -21,7 +21,7 @@ class RestClient:
         """
         self.server_url = server_url.rstrip("/")
         self._session: Optional[aiohttp.ClientSession] = None
-        self._user_id: Optional[str] = None
+        self._token: Optional[str] = None
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         """Ensure aiohttp session is created."""
@@ -29,20 +29,20 @@ class RestClient:
             self._session = aiohttp.ClientSession()
         return self._session
 
-    def set_user_id(self, user_id: Optional[str]) -> None:
+    def set_token(self, token: Optional[str]) -> None:
         """
-        Set user ID for authentication header.
+        Set JWT token for authentication header.
 
         Args:
-            user_id: User ID for Bearer token
+            token: JWT token from login/register response
         """
-        self._user_id = user_id
+        self._token = token
 
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for requests."""
         headers = {"Content-Type": "application/json"}
-        if self._user_id:
-            headers["Authorization"] = f"Bearer {self._user_id}"
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
         return headers
 
     async def post(self, path: str, data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
