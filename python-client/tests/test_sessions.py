@@ -333,6 +333,7 @@ async def test_client_ensure_session_integration(temp_storage):
         "is_active": 1,
         "can_send_images": 1,
         "created_at": 1234567890,
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhbGljZV91c2VyX2lkIiwiZXhwIjo5OTk5OTk5OTk5fQ.test_token",
     }
     
     mock_upload_response = {

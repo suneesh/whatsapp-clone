@@ -732,7 +732,13 @@ class WhatsAppClient:
                             get_one_time_prekey_callback=self._get_one_time_prekey,
                         )
                     else:
-                        # Existing session - just decrypt
+                        # Check if session exists, establish if needed
+                        session = self._session_manager.get_session(from_user)
+                        if not session:
+                            logger.info(f"No session with {from_user}, establishing one before decryption")
+                            await self.ensure_session(from_user)
+                        
+                        # Decrypt with existing/established session
                         message.content = self._session_manager.decrypt_message(from_user, content)
                         
                 except json.JSONDecodeError:
