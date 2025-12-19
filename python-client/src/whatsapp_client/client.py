@@ -675,14 +675,18 @@ class WhatsAppClient:
     async def _handle_incoming_message(self, data: Dict[str, Any]) -> None:
         """Handle incoming message from WebSocket."""
         try:
+            # Extract payload from WebSocket message
+            # Worker sends { type: 'message', payload: {...} }
+            payload = data.get("payload", data)
+            
             # Create Message object
             message = Message(
-                id=data.get("id", str(uuid.uuid4())),
-                from_user=data["from"],
+                id=payload.get("id", str(uuid.uuid4())),
+                from_user=payload["from"],
                 to=self.user_id,
-                content=data["content"],
-                type=data.get("type", "text"),
-                timestamp=data.get("timestamp", int(time.time() * 1000)),
+                content=payload["content"],
+                type=payload.get("type", "text"),
+                timestamp=payload.get("timestamp", int(time.time() * 1000)),
                 status="delivered",
             )
             
