@@ -107,18 +107,19 @@ class X3DHProtocol:
             # Concatenate all DH outputs
             dh_concatenated = b"".join(dh_results)
             
-            # Derive shared secret using HKDF
+            # Derive shared secret using HKDF (matching JavaScript implementation)
+            # JavaScript uses: salt = 32 zero bytes, info = 'WHATSAPP-CLONE-X3DH'
             shared_secret = X3DHProtocol._derive_key(
                 input_key_material=dh_concatenated,
-                salt=b"WhatsAppCloneX3DH",
-                info=b"SharedSecret",
+                salt=bytes(32),  # 32 zero bytes to match JS default
+                info=b"WHATSAPP-CLONE-X3DH",
                 length=32
             )
             
             # Derive initial root key and chain key for Double Ratchet
             initial_message_key = X3DHProtocol._derive_key(
                 input_key_material=shared_secret,
-                salt=b"WhatsAppCloneX3DH",
+                salt=bytes(32),
                 info=b"InitialMessageKey",
                 length=32
             )
@@ -179,11 +180,12 @@ class X3DHProtocol:
             # Concatenate all DH outputs
             dh_concatenated = b"".join(dh_results)
             
-            # Derive shared secret using HKDF (same as initiator)
+            # Derive shared secret using HKDF (matching JavaScript implementation)
+            # JavaScript uses: salt = 32 zero bytes, info = 'WHATSAPP-CLONE-X3DH'
             shared_secret = X3DHProtocol._derive_key(
                 input_key_material=dh_concatenated,
-                salt=b"WhatsAppCloneX3DH",
-                info=b"SharedSecret",
+                salt=bytes(32),  # 32 zero bytes to match JS default
+                info=b"WHATSAPP-CLONE-X3DH",
                 length=32
             )
             
