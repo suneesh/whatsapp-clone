@@ -1,6 +1,8 @@
 """X3DH (Extended Triple Diffie-Hellman) Protocol Implementation."""
 
+import base64
 import hashlib
+import re
 import secrets
 from typing import Tuple
 
@@ -11,6 +13,25 @@ from nacl.encoding import RawEncoder
 
 from ..models import PrekeyBundle
 from ..exceptions import WhatsAppClientError
+
+
+def decode_key(key_str: str) -> bytes:
+    """
+    Decode a key string that could be base64 or hex encoded.
+    
+    Args:
+        key_str: Base64 or hex encoded key string
+        
+    Returns:
+        Decoded key bytes
+    """
+    # Detect if string is hex (only 0-9, a-f, A-F) or base64
+    is_hex = bool(re.match(r'^[0-9a-fA-F]+$', key_str))
+    
+    if is_hex:
+        return bytes.fromhex(key_str)
+    else:
+        return base64.b64decode(key_str)
 
 
 class X3DHProtocol:
@@ -45,13 +66,13 @@ class X3DHProtocol:
             WhatsAppClientError: If key agreement fails
         """
         try:
-            # Parse Bob's public keys
+            # Parse Bob's public keys (supports both base64 and hex)
             identity_key_bob = PublicKey(
-                bytes.fromhex(prekey_bundle.identity_key),
+                decode_key(prekey_bundle.identity_key),
                 encoder=RawEncoder
             )
             signed_prekey_bob = PublicKey(
-                bytes.fromhex(prekey_bundle.signed_prekey),
+                decode_key(prekey_bundle.signed_prekey),
                 encoder=RawEncoder
             )
             
@@ -74,14 +95,14 @@ class X3DHProtocol:
             
             if prekey_bundle.one_time_prekeys and len(prekey_bundle.one_time_prekeys) > 0:
                 # Use first available one-time prekey
-                one_time_prekey_hex = prekey_bundle.one_time_prekeys[0]
+                one_time_prekey_str = prekey_bundle.one_time_prekeys[0]
                 one_time_prekey_bob = PublicKey(
-                    bytes.fromhex(one_time_prekey_hex),
+                    decode_key(one_time_prekey_str),
                     encoder=RawEncoder
                 )
                 dh4 = X3DHProtocol._dh(ephemeral_key_alice, one_time_prekey_bob)
                 dh_results.append(dh4)
-                one_time_prekey_id = one_time_prekey_hex
+                one_time_prekey_id = one_time_prekey_str
             
             # Concatenate all DH outputs
             dh_concatenated = b"".join(dh_results)
