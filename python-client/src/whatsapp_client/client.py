@@ -515,6 +515,19 @@ class WhatsAppClient:
             logger.debug(f"Marked prekey {prekey_id[:8]}... as used")
         except Exception as e:
             logger.warning(f"Failed to mark prekey as used: {e}")
+
+    async def _get_signed_prekey(self, prekey_id: int):
+        """Get our signed prekey private key by ID."""
+        if not self._key_manager:
+            return None
+        # The key manager stores signed prekeys
+        return self._key_manager.get_signed_prekey_private(prekey_id)
+    
+    async def _get_one_time_prekey(self, prekey_id: int):
+        """Get our one-time prekey private key by ID."""
+        if not self._key_manager:
+            return None
+        return self._key_manager.get_one_time_prekey_private(prekey_id)
     
     def get_session(self, peer_id: str) -> Optional[Session]:
         """
@@ -675,18 +688,21 @@ class WhatsAppClient:
     async def _handle_incoming_message(self, data: Dict[str, Any]) -> None:
         """Handle incoming message from WebSocket."""
         try:
+            import json
+            
             # Extract payload from WebSocket message
             # Worker sends { type: 'message', payload: {...} }
             payload = data.get("payload", data)
             
             from_user = payload["from"]
+            content = payload["content"]
             
             # Create Message object
             message = Message(
                 id=payload.get("id", str(uuid.uuid4())),
                 from_user=from_user,
                 to=self.user_id,
-                content=payload["content"],
+                content=content,
                 type=payload.get("type", "text"),
                 timestamp=payload.get("timestamp", int(time.time() * 1000)),
                 status="delivered",
@@ -695,16 +711,39 @@ class WhatsAppClient:
             # Decrypt if encrypted (check for Signal protocol format)
             if payload.get("encrypted"):
                 try:
-                    # Ensure session exists with sender before decrypting
                     if not self._session_manager:
                         raise WhatsAppClientError("Session manager not initialized")
+                    if not self._key_manager:
+                        raise WhatsAppClientError("Key manager not initialized")
                     
-                    await self.ensure_session(from_user)
+                    # Parse the encrypted content to check for X3DH first message
+                    encrypted_data = json.loads(content)
                     
-                    # Now decrypt the message
-                    message.content = self._session_manager.decrypt_message(from_user, message.content)
+                    if "x3dh" in encrypted_data:
+                        # This is a first message - process X3DH as responder
+                        logger.info(f"Received first encrypted message from {from_user} with X3DH data")
+                        
+                        message.content = await self._session_manager.process_first_message(
+                            peer_id=from_user,
+                            encrypted_content=content,
+                            identity_private_key=self._key_manager._identity_keypair.private_key,
+                            get_signed_prekey_callback=self._get_signed_prekey,
+                            get_one_time_prekey_callback=self._get_one_time_prekey,
+                        )
+                    else:
+                        # Existing session - just decrypt
+                        message.content = self._session_manager.decrypt_message(from_user, content)
+                        
+                except json.JSONDecodeError:
+                    # Not JSON, might be legacy E2EE: format
+                    if content.startswith("E2EE:"):
+                        message.content = self._session_manager.decrypt_message(from_user, content)
+                    else:
+                        logger.error(f"Unknown encrypted message format from {from_user}")
                 except Exception as e:
                     logger.error(f"Failed to decrypt message from {from_user}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     # Keep encrypted content for debugging
             
             # Save to storage
@@ -724,6 +763,8 @@ class WhatsAppClient:
         
         except Exception as e:
             logger.error(f"Error handling incoming message: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def _handle_typing(self, data: Dict[str, Any]) -> None:
         """Handle typing indicator."""

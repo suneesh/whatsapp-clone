@@ -142,6 +142,130 @@ class SessionManager:
         
         logger.info(f"Session established with {peer_id}: {session.session_id}")
         return session
+
+    async def process_first_message(
+        self,
+        peer_id: str,
+        encrypted_content: str,
+        identity_private_key,
+        get_signed_prekey_callback,
+        get_one_time_prekey_callback,
+    ) -> str:
+        """
+        Process first message from peer containing X3DH data.
+        
+        This establishes a session as responder (receiver) when someone sends
+        us their first encrypted message with X3DH initialization data.
+        
+        Args:
+            peer_id: Sender's user ID
+            encrypted_content: The encrypted message JSON string
+            identity_private_key: Our identity private key
+            get_signed_prekey_callback: Callback to get our signed prekey by ID
+            get_one_time_prekey_callback: Callback to get our one-time prekey by ID
+            
+        Returns:
+            Decrypted plaintext
+            
+        Raises:
+            WhatsAppClientError: If X3DH or decryption fails
+        """
+        import base64
+        
+        try:
+            payload = json.loads(encrypted_content)
+        except json.JSONDecodeError as e:
+            raise WhatsAppClientError(f"Invalid encrypted message format: {e}")
+        
+        # Check if this is a first message with X3DH data
+        x3dh_data = payload.get("x3dh")
+        if not x3dh_data:
+            raise WhatsAppClientError("No X3DH data in first message")
+        
+        logger.info(f"Processing first message from {peer_id} with X3DH data")
+        
+        # Extract X3DH parameters
+        remote_identity_key = base64.b64decode(x3dh_data["senderIdentityKey"])
+        remote_ephemeral_key = base64.b64decode(x3dh_data["senderEphemeralKey"])
+        used_signed_prekey_id = x3dh_data["usedSignedPrekeyId"]
+        used_one_time_prekey_id = x3dh_data.get("usedOneTimePrekeyId")
+        
+        # Get our signed prekey that was used
+        signed_prekey_private = await get_signed_prekey_callback(used_signed_prekey_id)
+        if not signed_prekey_private:
+            raise WhatsAppClientError(f"Signed prekey {used_signed_prekey_id} not found")
+        
+        # Get our one-time prekey if it was used
+        one_time_prekey_private = None
+        if used_one_time_prekey_id is not None:
+            one_time_prekey_private = await get_one_time_prekey_callback(used_one_time_prekey_id)
+        
+        # Perform X3DH as responder
+        shared_secret = X3DHProtocol.respond_session(
+            identity_private_key=identity_private_key,
+            signed_prekey_private=signed_prekey_private,
+            one_time_prekey_private=one_time_prekey_private,
+            remote_identity_key=remote_identity_key,
+            remote_ephemeral_key=remote_ephemeral_key,
+        )
+        
+        logger.info(f"X3DH responder shared secret derived for {peer_id}")
+        
+        # Create session record
+        from datetime import datetime
+        session = Session(
+            session_id=f"{peer_id}_{self.user_id}_{datetime.now().timestamp()}",
+            peer_id=peer_id,
+            shared_secret=shared_secret.hex(),
+            ephemeral_key="",  # Not used for responder
+            initial_message_key="",  # Not used for responder
+            created_at=datetime.now().isoformat(),
+            one_time_prekey_used=str(used_one_time_prekey_id) if used_one_time_prekey_id else None
+        )
+        
+        # Initialize ratchet for receiving
+        ratchet = RatchetEngine()
+        
+        # Parse the sender's ratchet key from message header
+        header_data = payload.get("header", {})
+        sender_ratchet_key_b64 = header_data.get("ratchetKey")
+        if not sender_ratchet_key_b64:
+            raise WhatsAppClientError("Missing ratchet key in message header")
+        
+        sender_ratchet_key = base64.b64decode(sender_ratchet_key_b64)
+        
+        # Initialize ratchet as receiver with sender's ratchet key
+        ratchet.initialize_responder(shared_secret, sender_ratchet_key)
+        
+        # Save ratchet state to session
+        session.ratchet_state = ratchet.serialize_state()
+        
+        # Store session
+        self._save_session(session)
+        self._sessions[peer_id] = session
+        
+        logger.info(f"Session established as responder with {peer_id}")
+        
+        # Now decrypt the actual message
+        ciphertext_b64 = payload.get("ciphertext")
+        auth_tag_b64 = payload.get("authTag")
+        
+        if not ciphertext_b64:
+            raise WhatsAppClientError("Missing ciphertext in encrypted message")
+        
+        ciphertext = base64.b64decode(ciphertext_b64)
+        auth_tag = base64.b64decode(auth_tag_b64) if auth_tag_b64 else None
+        
+        header = RatchetHeader.from_dict(header_data)
+        
+        # Decrypt with the ratchet
+        plaintext = ratchet.decrypt(ciphertext, header, auth_tag)
+        
+        # Update session with new ratchet state
+        session.ratchet_state = ratchet.serialize_state()
+        self._save_session(session)
+        
+        return plaintext
     
     def encrypt_message(self, peer_id: str, plaintext: str) -> str:
         """

@@ -18,25 +18,33 @@ from ..exceptions import WhatsAppClientError
 class RatchetHeader:
     """Header attached to encrypted messages."""
     
-    dh_public_key: str  # Hex-encoded public DH key
+    dh_public_key: str  # Base64-encoded public DH key (for Signal protocol compatibility)
     prev_chain_length: int  # Number of messages in previous sending chain
     message_number: int  # Message number in current chain
     
     def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
+        """Convert to dictionary for serialization (Signal protocol format)."""
         return {
-            "dh": self.dh_public_key,
-            "pn": self.prev_chain_length,
-            "n": self.message_number,
+            "ratchetKey": self.dh_public_key,
+            "previousChainLength": self.prev_chain_length,
+            "messageNumber": self.message_number,
         }
     
     @classmethod
     def from_dict(cls, data: dict) -> "RatchetHeader":
-        """Create from dictionary."""
+        """Create from dictionary (supports both formats)."""
+        # Signal protocol format
+        if "ratchetKey" in data:
+            return cls(
+                dh_public_key=data["ratchetKey"],
+                prev_chain_length=data.get("previousChainLength", 0),
+                message_number=data.get("messageNumber", 0),
+            )
+        # Legacy format
         return cls(
-            dh_public_key=data["dh"],
-            prev_chain_length=data["pn"],
-            message_number=data["n"],
+            dh_public_key=data.get("dh", ""),
+            prev_chain_length=data.get("pn", 0),
+            message_number=data.get("n", 0),
         )
 
 
@@ -119,6 +127,35 @@ class RatchetEngine:
         self.state.dh_self = dh_self
         self.state.root_key = shared_secret
         # Remote DH key will be set when first message arrives
+
+    def initialize_responder(
+        self,
+        shared_secret: bytes,
+        remote_ratchet_key: bytes,
+    ) -> None:
+        """
+        Initialize as responder to a first message (after X3DH respond).
+        
+        This is called when processing a first message from someone else.
+        We receive their initial ratchet key from the message header.
+        
+        Args:
+            shared_secret: Shared secret from X3DH respond
+            remote_ratchet_key: Sender's ratchet public key from message header
+        """
+        import base64
+        
+        # Set root key from shared secret
+        self.state.root_key = shared_secret
+        
+        # Parse remote's ratchet key
+        self.state.dh_remote = PublicKey(remote_ratchet_key, encoder=RawEncoder)
+        
+        # Generate our own DH key pair
+        self.state.dh_self = PrivateKey.generate()
+        
+        # Perform DH ratchet to derive receiving chain
+        self._dh_ratchet_receive(self.state.dh_remote)
     
     def encrypt(self, plaintext: str) -> Tuple[str, RatchetHeader]:
         """
@@ -160,13 +197,19 @@ class RatchetEngine:
         
         return ciphertext_b64, header
     
-    def decrypt(self, ciphertext_b64: str, header: RatchetHeader) -> str:
+    def decrypt(
+        self,
+        ciphertext_b64: str,
+        header: RatchetHeader,
+        auth_tag: bytes = None,
+    ) -> str:
         """
         Decrypt a message using Double Ratchet.
         
         Args:
-            ciphertext_b64: Base64-encoded ciphertext
+            ciphertext_b64: Base64-encoded ciphertext (or bytes)
             header: Message header with ratchet info
+            auth_tag: Optional auth tag for Signal protocol format
             
         Returns:
             Decrypted plaintext
@@ -174,14 +217,24 @@ class RatchetEngine:
         Raises:
             WhatsAppClientError: If decryption fails
         """
-        # Check if we need to perform DH ratchet
-        remote_dh_hex = header.dh_public_key
-        current_remote_dh_hex = bytes(self.state.dh_remote).hex() if self.state.dh_remote else None
+        import base64
         
-        if remote_dh_hex != current_remote_dh_hex:
+        # Decode ratchet key - could be base64 or hex
+        remote_dh_key = header.dh_public_key
+        try:
+            # Try base64 first (Signal protocol format)
+            remote_dh_bytes = base64.b64decode(remote_dh_key)
+        except:
+            # Fall back to hex (legacy format)
+            remote_dh_bytes = bytes.fromhex(remote_dh_key)
+        
+        # Check if we need to perform DH ratchet
+        current_remote_dh_bytes = bytes(self.state.dh_remote) if self.state.dh_remote else None
+        
+        if remote_dh_bytes != current_remote_dh_bytes:
             # New DH key from sender - perform DH ratchet
             self._skip_message_keys(header.prev_chain_length)
-            self._dh_ratchet_receive(PublicKey(bytes.fromhex(remote_dh_hex)))
+            self._dh_ratchet_receive(PublicKey(remote_dh_bytes, encoder=RawEncoder))
         
         # Skip any message keys if we missed messages
         self._skip_message_keys(header.message_number)
@@ -198,11 +251,25 @@ class RatchetEngine:
         
         # Decrypt message
         try:
+            # Decode ciphertext
+            if isinstance(ciphertext_b64, bytes):
+                ciphertext_bytes = ciphertext_b64
+            else:
+                ciphertext_bytes = base64.b64decode(ciphertext_b64.encode('ascii'))
+            
+            # Signal protocol format: separate nonce, ciphertext, authTag
+            # NaCl secretbox.open expects: nonce (24 bytes) + ciphertext + tag (16 bytes)
+            if auth_tag is not None:
+                # Reconstruct NaCl format: nonce + ciphertext + auth_tag
+                # The ciphertext from Signal format contains: nonce (24 bytes) + actual_ciphertext
+                # auth_tag is the Poly1305 MAC (16 bytes)
+                full_box = ciphertext_bytes + auth_tag
+            else:
+                # Legacy format: already includes nonce + ciphertext + tag
+                full_box = ciphertext_bytes
+            
             box = SecretBox(message_key)
-            # Decode base64 first
-            import base64
-            ciphertext_bytes = base64.b64decode(ciphertext_b64.encode('ascii'))
-            plaintext_bytes = box.decrypt(ciphertext_bytes)
+            plaintext_bytes = box.decrypt(full_box)
             return plaintext_bytes.decode('utf-8')
         except Exception as e:
             raise WhatsAppClientError(f"Decryption failed: {e}")

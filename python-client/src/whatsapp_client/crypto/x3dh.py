@@ -106,6 +106,70 @@ class X3DHProtocol:
             
         except Exception as e:
             raise WhatsAppClientError(f"X3DH session initiation failed: {e}")
+
+    @staticmethod
+    def respond_session(
+        identity_private_key: PrivateKey,
+        signed_prekey_private: PrivateKey,
+        one_time_prekey_private: PrivateKey | None,
+        remote_identity_key: bytes,
+        remote_ephemeral_key: bytes,
+    ) -> bytes:
+        """
+        Respond to X3DH session as the responder (Bob).
+        
+        This is called when receiving a first message with X3DH data.
+        
+        Args:
+            identity_private_key: Bob's identity private key
+            signed_prekey_private: Bob's signed prekey private key that was used
+            one_time_prekey_private: Bob's one-time prekey private key if used (or None)
+            remote_identity_key: Alice's identity public key (from X3DH data)
+            remote_ephemeral_key: Alice's ephemeral public key (from X3DH data)
+            
+        Returns:
+            32-byte shared secret
+            
+        Raises:
+            WhatsAppClientError: If key agreement fails
+        """
+        try:
+            # Parse remote public keys
+            identity_key_alice = PublicKey(remote_identity_key, encoder=RawEncoder)
+            ephemeral_key_alice = PublicKey(remote_ephemeral_key, encoder=RawEncoder)
+            
+            # Perform DH operations (note: reversed order from initiator)
+            # DH1: DH(SPKb, IKa) - signed prekey B with identity key A
+            dh1 = X3DHProtocol._dh(signed_prekey_private, identity_key_alice)
+            
+            # DH2: DH(IKb, EKa) - identity key B with ephemeral key A
+            dh2 = X3DHProtocol._dh(identity_private_key, ephemeral_key_alice)
+            
+            # DH3: DH(SPKb, EKa) - signed prekey B with ephemeral key A
+            dh3 = X3DHProtocol._dh(signed_prekey_private, ephemeral_key_alice)
+            
+            dh_results = [dh1, dh2, dh3]
+            
+            # DH4: DH(OPKb, EKa) - if one-time prekey was used
+            if one_time_prekey_private:
+                dh4 = X3DHProtocol._dh(one_time_prekey_private, ephemeral_key_alice)
+                dh_results.append(dh4)
+            
+            # Concatenate all DH outputs
+            dh_concatenated = b"".join(dh_results)
+            
+            # Derive shared secret using HKDF (same as initiator)
+            shared_secret = X3DHProtocol._derive_key(
+                input_key_material=dh_concatenated,
+                salt=b"WhatsAppCloneX3DH",
+                info=b"SharedSecret",
+                length=32
+            )
+            
+            return shared_secret
+            
+        except Exception as e:
+            raise WhatsAppClientError(f"X3DH session response failed: {e}")
     
     @staticmethod
     def _dh(private_key: PrivateKey, public_key: PublicKey) -> bytes:

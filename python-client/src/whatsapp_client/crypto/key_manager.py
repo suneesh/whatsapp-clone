@@ -363,3 +363,42 @@ class KeyManager:
             pk for pk in self._one_time_prekeys if pk["keyId"] != key_id
         ]
         logger.debug(f"Consumed prekey {key_id}, {len(self._one_time_prekeys)} remaining")
+
+    def get_signed_prekey_private(self, prekey_id: int):
+        """
+        Get signed prekey private key by ID.
+        
+        Args:
+            prekey_id: The signed prekey ID
+            
+        Returns:
+            NaCl PrivateKey or None if not found
+        """
+        if not self._signed_prekey:
+            return None
+        
+        if self._signed_prekey["keyId"] != prekey_id:
+            logger.warning(f"Signed prekey ID mismatch: requested {prekey_id}, have {self._signed_prekey['keyId']}")
+            return None
+        
+        # Return as NaCl PrivateKey
+        from nacl.public import PrivateKey
+        return PrivateKey(self._signed_prekey["privateKey"])
+
+    def get_one_time_prekey_private(self, prekey_id: int):
+        """
+        Get one-time prekey private key by ID.
+        
+        Args:
+            prekey_id: The one-time prekey ID
+            
+        Returns:
+            NaCl PrivateKey or None if not found
+        """
+        for pk in self._one_time_prekeys:
+            if pk["keyId"] == prekey_id:
+                from nacl.public import PrivateKey
+                return PrivateKey(pk["privateKey"])
+        
+        logger.warning(f"One-time prekey {prekey_id} not found")
+        return None
