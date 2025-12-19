@@ -335,8 +335,26 @@ class WhatsAppClient:
         self._key_manager = KeyManager(self.user_id, self.storage_path)
         await self._key_manager.initialize(password=password)
 
+        # Initialize session manager
+        self._session_manager = SessionManager(self.user_id, self.storage_path)
+        
+        # Initialize message storage
+        self._message_storage = MessageStorage(self.storage_path, self.user_id)
+        
+        # Initialize fingerprint storage
+        from .storage import FingerprintStorage
+        self._fingerprint_storage = FingerprintStorage(self.storage_path, self.user_id)
+        
+        # Initialize group storage
+        from .storage import GroupStorage
+        self._group_storage = GroupStorage(self.storage_path, self.user_id)
+
         # Upload public keys to server
         await self._upload_public_keys()
+        
+        # Connect to WebSocket if auto_connect enabled
+        if self.auto_connect:
+            await self._connect_websocket()
 
         logger.info(f"Registration successful for user: {username}")
         return user
