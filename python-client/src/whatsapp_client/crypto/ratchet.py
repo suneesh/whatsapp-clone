@@ -162,11 +162,12 @@ class RatchetEngine:
         # Parse remote's ratchet key
         self.state.dh_remote = PublicKey(remote_ratchet_key, encoder=RawEncoder)
         
-        # Generate our own DH key pair (needed for future sends)
-        self.state.dh_self = PrivateKey.generate()
+        # Note: JavaScript does NOT generate DH key pair for responder yet!
+        # It's null initially and generated during first encrypt (performDHRatchet)
+        self.state.dh_self = None
         
         # Note: JavaScript does NOT perform DH ratchet immediately!
-        # The DH ratchet happens during decryption when needsRatchet is true
+        # The DH ratchet happens during encryption when sendingChainKey is null
     
     def encrypt(self, plaintext: str) -> Tuple[str, RatchetHeader]:
         """
@@ -184,6 +185,10 @@ class RatchetEngine:
         import logging
         logger = logging.getLogger(__name__)
         
+        # Check if ratchet is initialized
+        if not self.state.root_key and not self.state.sending_chain_key and not self.state.dh_remote:
+            raise WhatsAppClientError("Ratchet not initialized")
+        
         # If no sending chain, perform DH ratchet (responder case)
         if not self.state.sending_chain_key:
             logger.info(f"No sending chain key, performing DH ratchet...")
@@ -197,8 +202,9 @@ class RatchetEngine:
 
         # Create header with base64-encoded ratchet key (to match JS implementation)
         import base64
-        # Encode ratchet key and ensure it's a clean base64 string (strip any whitespace)
-        ratchet_key_b64 = base64.b64encode(bytes(self.state.dh_self.public_key)).decode('ascii').strip()
+        # Encode ratchet key as standard base64 (not URL-safe)
+        # btoa() in JavaScript expects standard base64 with +/ not -_
+        ratchet_key_b64 = base64.b64encode(bytes(self.state.dh_self.public_key)).decode('ascii')
         header = RatchetHeader(
             dh_public_key=ratchet_key_b64,
             prev_chain_length=self.state.prev_sending_chain_length,
@@ -209,11 +215,16 @@ class RatchetEngine:
         box = SecretBox(message_key)
         ciphertext_bytes = box.encrypt(plaintext.encode('utf-8'))
         
+        logger.debug(f"  Encryption successful:")
+        logger.debug(f"    message_key: {message_key.hex()[:32]}...")
+        logger.debug(f"    plaintext: '{plaintext[:50]}'")
+        logger.debug(f"    ciphertext_bytes length: {len(ciphertext_bytes)} (includes 24-byte nonce + encrypted data + 16-byte MAC)")
+        
         # Encode to base64 for transmission
         import base64
         ciphertext_b64 = base64.b64encode(ciphertext_bytes).decode('ascii')
         
-        logger.debug(f"  encrypted ciphertext (base64): {ciphertext_b64[:30]}...")
+        logger.debug(f"  encrypted ciphertext (base64): {ciphertext_b64[:50]}...")
         logger.debug(f"  header: {header.to_dict()}")
         
         # Advance sending chain
@@ -243,6 +254,8 @@ class RatchetEngine:
             WhatsAppClientError: If decryption fails
         """
         import base64
+        import logging
+        logger = logging.getLogger(__name__)
         
         # Decode ratchet key - could be base64 or hex
         remote_dh_key = header.dh_public_key
@@ -266,10 +279,17 @@ class RatchetEngine:
         # Check if we need to perform DH ratchet
         current_remote_dh_bytes = bytes(self.state.dh_remote) if self.state.dh_remote else None
         
+        logger.debug(f"Comparing ratchet keys:")
+        logger.debug(f"  Message header ratchet key: {remote_dh_bytes.hex()[:16]}...")
+        logger.debug(f"  Current state dh_remote: {current_remote_dh_bytes.hex()[:16] if current_remote_dh_bytes else 'None'}...")
+        
         if remote_dh_bytes != current_remote_dh_bytes:
+            logger.debug(f"Ratchet keys differ - performing DH ratchet receive")
             # New DH key from sender - perform DH ratchet
             self._skip_message_keys(header.prev_chain_length)
             self._dh_ratchet_receive(PublicKey(remote_dh_bytes, encoder=RawEncoder))
+        else:
+            logger.debug(f"Ratchet keys match - no DH ratchet needed")
         
         # Skip any message keys if we missed messages
         self._skip_message_keys(header.message_number)
@@ -278,7 +298,9 @@ class RatchetEngine:
         if not self.state.receiving_chain_key:
             raise WhatsAppClientError("Receiving chain not initialized")
         
+        logger.debug(f"Deriving message key from receiving_chain_key={self.state.receiving_chain_key.hex()[:16]}...")
         message_key = self._derive_message_key(self.state.receiving_chain_key)
+        logger.debug(f"  message_key={message_key.hex()[:16]}...")
         
         # Advance receiving chain
         self.state.receiving_chain_key = self._advance_chain_key(self.state.receiving_chain_key)
@@ -292,12 +314,23 @@ class RatchetEngine:
             else:
                 ciphertext_bytes = base64.b64decode(ciphertext_b64)
             
+            logger.debug(f"  Attempting decryption:")
+            logger.debug(f"    message_key: {message_key.hex()[:32]}...")
+            logger.debug(f"    ciphertext_bytes length: {len(ciphertext_bytes)}")
+            logger.debug(f"    ciphertext_bytes (first 50): {ciphertext_bytes[:50].hex()}")
+            
             # JavaScript format: nonce (24 bytes) + ciphertext + MAC (16 bytes)
             # PyNaCl SecretBox.decrypt expects the same format
             box = SecretBox(message_key)
             plaintext_bytes = box.decrypt(ciphertext_bytes)
+            
+            logger.debug(f"  Decryption successful! Plaintext: '{plaintext_bytes.decode('utf-8')[:50]}'")
             return plaintext_bytes.decode('utf-8')
         except Exception as e:
+            logger.error(f"  Decryption failed!")
+            logger.error(f"    message_key: {message_key.hex()}")
+            logger.error(f"    ciphertext_bytes length: {len(ciphertext_bytes) if 'ciphertext_bytes' in locals() else 'N/A'}")
+            logger.error(f"    Error: {e}")
             raise WhatsAppClientError(f"Decryption failed: {e}")
     
     def try_skipped_message_keys(
@@ -315,7 +348,15 @@ class RatchetEngine:
         Returns:
             Decrypted plaintext if key found, None otherwise
         """
-        key_id = (header.dh_public_key, header.message_number)
+        # Convert header DH key to hex format to match storage format
+        import base64
+        try:
+            dh_key_bytes = base64.b64decode(header.dh_public_key)
+            dh_key_hex = dh_key_bytes.hex()
+        except Exception:
+            dh_key_hex = header.dh_public_key  # Fallback
+        
+        key_id = (dh_key_hex, header.message_number)
         
         if key_id in self.state.skipped_keys:
             message_key = self.state.skipped_keys[key_id]
@@ -335,11 +376,17 @@ class RatchetEngine:
     
     def _dh_ratchet(self) -> None:
         """Perform DH ratchet step (sender initiates)."""
-        if not self.state.dh_self or not self.state.dh_remote:
-            raise WhatsAppClientError("DH keys not initialized")
-        
         import logging
         logger = logging.getLogger(__name__)
+        
+        # If dh_self is None (responder's first send), generate it now
+        # This matches JavaScript's performDHRatchet which generates new key pair
+        if self.state.dh_self is None:
+            logger.debug(f"No dh_self yet (responder first send), generating new key pair...")
+            self.state.dh_self = PrivateKey.generate()
+        
+        if not self.state.dh_remote:
+            raise WhatsAppClientError("DH remote key not set")
         
         logger.debug(f"Performing DH ratchet...")
         logger.debug(f"  dh_self: {bytes(self.state.dh_self).hex()[:16]}...")
@@ -375,26 +422,42 @@ class RatchetEngine:
         Args:
             remote_dh_public: New DH public key from remote party
         """
-        # Update remote DH key
-        self.state.dh_remote = remote_dh_public
+        import logging
+        logger = logging.getLogger(__name__)
         
-        # Derive receiving chain key
+        logger.debug(f"=== DH RATCHET RECEIVE ===")
+        logger.debug(f"OLD dh_self: {bytes(self.state.dh_self).hex()[:16]}...")
+        logger.debug(f"NEW dh_remote: {bytes(remote_dh_public).hex()[:16]}...")
+        logger.debug(f"current root_key: {self.state.root_key.hex()[:16]}...")
+        
+        # Derive receiving chain key BEFORE updating dh_remote
         from nacl.bindings import crypto_scalarmult
         dh_output = crypto_scalarmult(
             bytes(self.state.dh_self),
-            bytes(self.state.dh_remote)
+            bytes(remote_dh_public)
         )
+        
+        logger.debug(f"DH output for RECEIVING: {dh_output.hex()[:16]}...")
         
         self.state.root_key, self.state.receiving_chain_key = self._kdf_rk(
             self.state.root_key,
             dh_output
         )
         
+        logger.debug(f"new root_key: {self.state.root_key.hex()[:16]}...")
+        logger.debug(f"new receiving_chain_key: {self.state.receiving_chain_key.hex()[:16]}...")
+        
+        # NOW update remote DH key
+        self.state.dh_remote = remote_dh_public
+        
         # Reset receiving message number
         self.state.receiving_message_number = 0
         
         # Generate new DH key pair for next sending
+        old_dh_self = self.state.dh_self
         self.state.dh_self = PrivateKey.generate()
+        
+        logger.debug(f"NEW dh_self generated: {bytes(self.state.dh_self).hex()[:16]}...")
         
         # Perform DH ratchet to get new sending chain
         self._dh_ratchet()

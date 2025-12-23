@@ -7,7 +7,6 @@ from typing import Optional, Callable, Any, Dict
 from enum import Enum
 
 import websockets
-from websockets.client import WebSocketClientProtocol
 
 from ..exceptions import WhatsAppClientError
 

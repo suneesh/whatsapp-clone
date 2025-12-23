@@ -38,7 +38,7 @@ class PrekeyBundle:
         identity_key: str,
         signing_key: str,
         fingerprint: str,
-        signed_prekey: Optional[str] = None,
+        signed_prekey: Optional[Dict[str, Any]] = None,
         signature: Optional[str] = None,
         signed_prekey_id: Optional[int] = None,
         one_time_prekeys: Optional[List[str]] = None,
@@ -51,9 +51,9 @@ class PrekeyBundle:
             identity_key: Base64 encoded identity public key
             signing_key: Base64 encoded signing public key
             fingerprint: Key fingerprint
-            signed_prekey: Base64 encoded signed prekey public key
-            signature: Signature of the signed prekey
-            signed_prekey_id: ID of the signed prekey
+            signed_prekey: Dict with keyId, publicKey, signature for signed prekey
+            signature: Signature of the signed prekey (deprecated, use signed_prekey dict)
+            signed_prekey_id: ID of the signed prekey (deprecated, use signed_prekey dict)
             one_time_prekeys: List of base64 encoded one-time prekeys
             one_time_prekey_id: ID of the one-time prekey (if provided)
         """
@@ -313,7 +313,11 @@ class KeyManager:
             identity_key=encode_base64(self._identity_keypair.public_key),
             signing_key=encode_base64(self._signing_keypair.public_key),
             fingerprint=self.get_fingerprint(),
-            signed_prekey=signed_prekey_key,
+            signed_prekey={
+                "keyId": signed_prekey_id,
+                "publicKey": signed_prekey_key,
+                "signature": signed_prekey_sig
+            } if signed_prekey_key else None,
             signature=signed_prekey_sig,
             signed_prekey_id=signed_prekey_id,
             one_time_prekeys=one_time_prekey_list,

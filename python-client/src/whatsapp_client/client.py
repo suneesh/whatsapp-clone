@@ -259,6 +259,52 @@ class WhatsAppClient:
             return []
         
         return self._fingerprint_storage.get_verified_fingerprints()
+
+    async def list_users(self) -> List[Dict[str, Any]]:
+        """
+        List all registered users on the server.
+        
+        Returns:
+            List of user dictionaries with id, username, avatar, lastSeen
+            
+        Example:
+            >>> users = await client.list_users()
+            >>> for user in users:
+            ...     print(f"{user['username']}: {user['id']}")
+        """
+        try:
+            response = await self._rest.get("/api/users")
+            if isinstance(response, list):
+                return response
+            return []
+        except Exception as e:
+            logger.error(f"Failed to list users: {e}")
+            return []
+
+    async def find_user(self, username: str) -> Optional[Dict[str, Any]]:
+        """
+        Find a user by their username.
+        
+        Args:
+            username: Username to search for
+            
+        Returns:
+            User dictionary with id, username, avatar, lastSeen or None if not found
+            
+        Example:
+            >>> user = await client.find_user("alice")
+            >>> if user:
+            ...     print(f"Found: {user['id']}")
+        """
+        try:
+            users = await self.list_users()
+            for user in users:
+                if user.get("username", "").lower() == username.lower():
+                    return user
+            return None
+        except Exception as e:
+            logger.error(f"Failed to find user: {e}")
+            return None
     
     @staticmethod
     def compare_fingerprints(fingerprint1: str, fingerprint2: str) -> bool:
@@ -429,11 +475,16 @@ class WhatsAppClient:
 
         # Add signed prekey if available
         if bundle.signed_prekey and bundle.signature and bundle.signed_prekey_id is not None:
-            upload_data["signedPrekey"] = {
-                "keyId": bundle.signed_prekey_id,
-                "publicKey": bundle.signed_prekey,
-                "signature": bundle.signature,
-            }
+            if isinstance(bundle.signed_prekey, dict):
+                # New format: signed_prekey is a dict
+                upload_data["signedPrekey"] = bundle.signed_prekey
+            else:
+                # Legacy format: signed_prekey is a string
+                upload_data["signedPrekey"] = {
+                    "keyId": bundle.signed_prekey_id,
+                    "publicKey": bundle.signed_prekey,
+                    "signature": bundle.signature,
+                }
         else:
             upload_data["signedPrekey"] = None
 
@@ -484,7 +535,8 @@ class WhatsAppClient:
             raise WhatsAppClientError("Session manager not initialized")
         
         # Get identity private key
-        identity_private_key = self._key_manager._identity_keypair.private_key
+        from nacl.public import PrivateKey as NaClPrivateKey
+        identity_private_key = NaClPrivateKey(self._key_manager._identity_keypair.private_key)
         
         # Ensure session with callbacks
         session = await self._session_manager.ensure_session(
@@ -764,10 +816,13 @@ class WhatsAppClient:
                         # This is a first message from a new peer - process X3DH as responder
                         logger.info(f"Received first encrypted message from {from_user} with X3DH data")
                         
+                        from nacl.public import PrivateKey as NaClPrivateKey
+                        identity_private_key = NaClPrivateKey(self._key_manager._identity_keypair.private_key)
+                        
                         message.content = await self._session_manager.process_first_message(
                             peer_id=from_user,
                             encrypted_content=content,
-                            identity_private_key=self._key_manager._identity_keypair.private_key,
+                            identity_private_key=identity_private_key,
                             get_signed_prekey_callback=self._get_signed_prekey,
                             get_one_time_prekey_callback=self._get_one_time_prekey,
                         )
@@ -794,7 +849,7 @@ class WhatsAppClient:
                             logger.debug(f"Decrypting with existing session for {from_user}")
                             message.content = self._session_manager.decrypt_message(from_user, content)
 
-                    if not existing_session:
+                    if not existing_session and "x3dh" not in encrypted_data:
                         # No session and no X3DH data - cannot decrypt
                         # This happens when:
                         # 1. We restarted and lost our session

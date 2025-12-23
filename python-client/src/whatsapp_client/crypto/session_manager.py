@@ -113,13 +113,12 @@ class SessionManager:
             identity_private_key,
             prekey_bundle
         )
+        
+        logger.debug(f"X3DH initiator shared secret: {shared_secret.hex()}")
 
-        # Get identity public key for X3DH data
-        from nacl.bindings import crypto_scalarmult_ed25519_base_noclamp
-        from nacl.encoding import RawEncoder as NaClRawEncoder
-        identity_public_key = crypto_scalarmult_ed25519_base_noclamp(
-            bytes(identity_private_key)
-        )
+        # Get identity public key for X3DH data (from the PrivateKey object)
+        import base64
+        identity_public_key = bytes(identity_private_key.public_key)
 
         # Create session record
         session = Session(
@@ -252,7 +251,7 @@ class SessionManager:
         )
         
         logger.info(f"X3DH responder shared secret derived for {peer_id}")
-        logger.debug(f"Shared secret (hex): {shared_secret.hex()}")
+        logger.debug(f"X3DH shared secret: {shared_secret.hex()}")
         
         # Create session record
         from datetime import datetime
@@ -282,7 +281,12 @@ class SessionManager:
         # Initialize ratchet as receiver with sender's ratchet key
         logger.debug(f"Calling initialize_responder with shared_secret={shared_secret.hex()[:16]}...")
         ratchet.initialize_responder(shared_secret, sender_ratchet_key)
-        logger.debug(f"Ratchet initialized. State: root_key={ratchet.state.root_key.hex()[:16]}..., receiving_chain_key={ratchet.state.receiving_chain_key.hex() if ratchet.state.receiving_chain_key else 'None'}")
+        logger.debug(f"Ratchet initialized.")
+        logger.debug(f"  root_key={ratchet.state.root_key.hex()[:16]}...")
+        logger.debug(f"  receiving_chain_key={ratchet.state.receiving_chain_key.hex() if ratchet.state.receiving_chain_key else 'None'}")
+        logger.debug(f"  sending_chain_key={ratchet.state.sending_chain_key.hex() if ratchet.state.sending_chain_key else 'None'}")
+        logger.debug(f"  dh_remote={bytes(ratchet.state.dh_remote).hex()[:16] if ratchet.state.dh_remote else 'None'}...")
+        logger.debug(f"  dh_self={bytes(ratchet.state.dh_self).hex()[:16] if ratchet.state.dh_self else 'None'}...")
         
         # Save ratchet state to session
         session.ratchet_state = ratchet.serialize_state()
@@ -348,10 +352,16 @@ class SessionManager:
         session.ratchet_state = ratchet.serialize_state()
 
         # Create encrypted message payload (Signal protocol format)
+        header_dict = header.to_dict()
         payload = {
             "ciphertext": ciphertext,
-            "header": header.to_dict(),
+            "header": header_dict,
         }
+
+        # Log the exact values being sent for debugging
+        logger.debug(f"Payload header.ratchetKey: '{header_dict['ratchetKey']}'")
+        logger.debug(f"Payload header.ratchetKey length: {len(header_dict['ratchetKey'])}")
+        logger.debug(f"Payload ciphertext length: {len(ciphertext)}")
 
         # Add X3DH data if this is the first message
         if is_first_message and session.x3dh_data:
@@ -369,8 +379,8 @@ class SessionManager:
         # Save session (updates ratchet state and clears x3dh_data if needed)
         self._save_session(session)
 
-        # Return as pure JSON (no E2EE: prefix) for compatibility with JS client
-        return json.dumps(payload)
+        # Return with E2EE: prefix for compatibility
+        return "E2EE:" + json.dumps(payload)
     
     def decrypt_message(self, peer_id: str, encrypted_message: str) -> str:
         """

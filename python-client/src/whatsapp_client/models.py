@@ -2,7 +2,7 @@
 
 from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
 class User(BaseModel):
@@ -18,8 +18,7 @@ class User(BaseModel):
     can_send_images: int = Field(default=1, alias="can_send_images")
     created_at: Optional[int] = Field(default=None, alias="created_at")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Message(BaseModel):
@@ -34,8 +33,7 @@ class Message(BaseModel):
     type: Literal["text", "image"] = "text"
     image_data: Optional[str] = Field(default=None, alias="imageData")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RegisterRequest(BaseModel):
@@ -89,8 +87,7 @@ class AuthResponse(BaseModel):
     can_send_images: int = Field(default=1, alias="can_send_images")
     created_at: Optional[int] = Field(default=None, alias="created_at")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ErrorResponse(BaseModel):

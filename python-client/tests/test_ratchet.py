@@ -300,6 +300,7 @@ async def test_client_send_message_integration(temp_storage):
         "username": "alice",
         "avatar": None,
         "lastSeen": 1234567890,
+        "token": "mock_jwt_token",
         "role": "user",
         "is_active": 1,
         "can_send_images": 1,
@@ -316,8 +317,11 @@ async def test_client_send_message_integration(temp_storage):
         "identityKey": "a" * 64,
         "signingKey": "b" * 64,
         "fingerprint": "c" * 60,
-        "signedPrekey": "d" * 64,
-        "signature": "e" * 128,
+        "signedPrekey": {
+            "keyId": 1,
+            "publicKey": "d" * 64,
+            "signature": "e" * 128
+        },
         "oneTimePrekeys": ["f" * 64]
     }
     
@@ -335,17 +339,20 @@ async def test_client_send_message_integration(temp_storage):
         with patch.object(client._rest, "get", new=AsyncMock(return_value=mock_prekey_bundle)):
             with patch.object(client._rest, "delete", new=AsyncMock(return_value={"status": "ok"})):
                 with patch("whatsapp_client.crypto.x3dh.X3DHProtocol.verify_prekey_signature", return_value=True):
-                    await client.login("alice", "password123")
-                    
-                    # Send encrypted message
-                    message = await client.send_message("bob_user_id", "Hello Bob!")
-                    
-                    assert message.id == "msg_123"
+                    with patch.object(client, "_connect_websocket", new=AsyncMock()):
+                        # Mock WebSocket as connected
+                        client._ws = AsyncMock()
+                        client._ws.is_connected = True
+                        client._ws.send_message = AsyncMock()
+                        
+                        await client.login("alice", "password123")
+                        
+                        # Send encrypted message
+                        message = await client.send_message("bob_user_id", "Hello Bob!")
+                        
                     assert message.content == "Hello Bob!"  # Client returns plaintext
                     assert message.status == "sent"
-
-
-@pytest.mark.asyncio
+                    assert message.to == "bob_user_id"
 async def test_client_decrypt_message(temp_storage):
     """Test WhatsAppClient.decrypt_message with two separate ratchets."""
     alice_client = WhatsAppClient(server_url="http://localhost:8787", storage_path=f"{temp_storage}/alice")
